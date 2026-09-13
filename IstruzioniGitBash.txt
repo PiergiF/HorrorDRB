@@ -1,0 +1,45 @@
+MUOVERSI IN GIT BASH
+
+- Per scaricare un progetto da github copiare l'url del sito e usare il comdando:  git clone https://github.com/nome-utente/nome-progetto.git
+(cambia l'url con quello copiato dal sito)
+
+
+BRANCH
+- Per creare un branch: git branch nome-branch
+- Spostarsi da un branch a un altro: git switch nome-branch
+- 	Per il merge prima devi posizionarti sul branch che deve ricevere le modifiche (es. main),
+	poi esegui il merge del branch che vuoi integrare: git merge nome-branch-da-unire
+ 
+ 
+AGGIUNGERE FILE / RIMUOVERE dall'add
+- Per aggiungere file singolo: git add nome_file.cpp
+- Per aggiungere tutti i file modificati o nuovi:  git add -A 
+- Per controllare lo stato dei file
+- Per rimuovere un file appena aggiunto: git restore --staged nome_file.cpp
+
+COMMIT
+- Per fare commit: git commit -m "messaggio"
+
+
+ANNULLARE MODIFICHE
+- Se non hai ancora committato: git restore nome_file.cpp
+- Annullare l'ultimo commit mantenendo però le modifiche nei tuoi file: git reset --soft HEAD~1
+- Distruggere tutte le modifiche e tornare esattamente a un commit specifico: git reset --hard id_del_commit
+
+
+CONTROLLARE LO STATO 
+- Per controllare lo stato dei file locali (ADD/COMMIT) : git status
+Questo comando ti mostra esattamente la situazione del tuo ambiente di lavoro:
+	In verde vedi i file pronti per il commit (nello staging).
+	In rosso vedi i file modificati ma non ancora aggiunti con git add.
+	Ti informa anche su quale branch ti trovi attualmente
+- Controllare se ci sono aggiornamenti sul server remoto (prima del pull): 
+	1) git fetch -> scarica le informazioni sugli aggiornamenti, ma non modifica i tuoi file locali. 
+	2) Dopo averlo eseguito, lancia di nuovo: git status -> Se qualcuno ha effettuato un push, il terminale ti avviserà con un messaggio, 
+	3) Solo a questo punto, sapendo che ci sono effettivamente dei cambiamenti in sospeso, puoi scaricarli e unirli al tuo codice in sicurezza eseguendo: git pull
+	
+PUSH E PULL
+- Scarica gli ultimi commit dal server remoto (es. GitHub): git pull
+- Inviare le modifiche: 
+	1) git push
+	2) Se hai appena creato un branch: git push -u origin nome-branch
