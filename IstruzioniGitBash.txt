@@ -1,5 +1,20 @@
-MUOVERSI IN GIT BASH
+ORDINE DA SEGUIRE 
+- Controlla 
+- Guarda se ci sono aggiornamenti da remoto con il fetch e subito dopo con lo status
+- Se ci sono aggiornamenti prima di fare altre modifiche fai il pull
+- Metti il lock sulle risorse che non vuoi siano modificate da altri
+- Togli il lock quando hai finito
+- controlla il branch
+- add e commit 
+- push
 
+
+
+MUOVERSI IN GIT BASH
+- Per spostarsi tra le cartelle: cd /c/ComputerGraphics/HorrorDRB
+Se il nome ha degli spazi racchiudilo tra le virgolette "cd /c/ComputerGraphics/HorrorDRB"
+
+SCARICARE IL PROGETTO
 - Per scaricare un progetto da github copiare l'url del sito e usare il comdando:  git clone https://github.com/nome-utente/nome-progetto.git
 (cambia l'url con quello copiato dal sito)
 
@@ -16,6 +31,7 @@ AGGIUNGERE FILE / RIMUOVERE dall'add
 - Per aggiungere tutti i file modificati o nuovi:  git add -A 
 - Per controllare lo stato dei file
 - Per rimuovere un file appena aggiunto: git restore --staged nome_file.cpp
+- Forza l'aggiunta di un file se la sua estenzione si trova in gitignore: git add -f nome_file.estensione
 
 COMMIT
 - Per fare commit: git commit -m "messaggio"
