@@ -1,0 +1,27 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.1",
+	"FriendlyName": "Metaxis AI Perception Tools",
+	"Description": "Plugin to extend AI Perception Functionality",
+	"Category": "AI",
+	"CreatedBy": "Metaxis Games",
+	"CreatedByURL": "https://metaxisgames.com/",
+	"DocsURL": "https://metaxisgames.com/metaxis-ai-perception-tools-documentation/",
+	"MarketplaceURL": "com.epicgames.launcher://ue/Fab/product/a3f7960c-b967-4313-a4b1-d22348b84e45",
+	"SupportURL": "https://discord.com/invite/vjj4AEjZSb",
+	"EngineVersion": "5.8.0",
+	"CanContainContent": true,
+	"Installed": true,
+	"Modules": [
+		{
+			"Name": "MetaxisAITools",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64",
+				"Android"
+			]
+		}
+	]
+}
