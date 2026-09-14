@@ -8,7 +8,8 @@ ORDINE DA SEGUIRE
 - add e commit 
 - push
 
-
+!!IMPORTANTE!!
+Attivare revision control su unreal che gestisce i lock, sennò rischiamo di corrompere le blueprint su cui lavoriamo 
 
 MUOVERSI IN GIT BASH
 - Per spostarsi tra le cartelle: cd /c/ComputerGraphics/HorrorDRB
