@@ -981,6 +981,7 @@ void UEosGameInstanceSubsystemDRB::CreateEpicLobby(APlayerController* PlayerCont
 
 					// Avvisiamo la UI che tutto è andato bene
 					OnEpicLobbyCreateComplete.Broadcast(true);
+					OnEpicLobbyCreateComplete.Broadcast(true);
 				}
 				else
 				{
@@ -2031,6 +2032,35 @@ void UEosGameInstanceSubsystemDRB::ShowEpicLoginUI(
 			}
 		);
 }
+
+
+
+/*
+int32 UEosGameInstanceSubsystemDRB::GetActiveLobbyMemberCount() const
+{
+	if (!bHasActiveLobby ||
+		!OnlineServicesInfoInternal ||
+		!OnlineServicesInfoInternal->LobbiesInterface.IsValid() || !CachedActiveLobby.IsValid())
+	{
+		return 0;
+	}
+
+	//using namespace UE::Online;
+	//
+	///
+	 * Qui non abbiamo una cache locale del FLobby.
+	 * Quindi, per il momento il valore va mantenuto
+	 * tramite l'ultimo FLobby ricevuto dagli eventi.
+	 *
+	 * La soluzione migliore sarà aggiungere una
+	 * CachedActiveLobby.
+	 ///
+	//
+	//return 0;
+	
+	return CachedActiveLobby->Members.Num();
+}
+*/
 
 
 

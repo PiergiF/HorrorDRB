@@ -81,4 +81,5 @@ Platforms/HoloLens/Config/HoloLensEngine.ini
 # per non caricare api online
 Config/DefaultEngine.ini
 
+# per non caricare settings online
 Saved/SaveGames/SettingsSaveDRB.sav
