@@ -59,6 +59,8 @@ void UEosGameInstanceSubsystemDRB::Deinitialize()
 		OnlineServicesInfoInternal->LobbyInviteHandle.Unbind();
 
 		OnlineServicesInfoInternal->Reset();
+		
+		CachedActiveLobby.Reset();
 	}
 	/// ^^^ DRB - LOBBY GPT ^^^ ///
 
@@ -974,14 +976,20 @@ void UEosGameInstanceSubsystemDRB::CreateEpicLobby(APlayerController* PlayerCont
 				if (Result.IsOk())
 				{
 					const FCreateLobby::Result& ResultValue = Result.GetOkValue();
+					
+					CachedActiveLobby = ResultValue.Lobby;
+					
 					// ID della lobby appena creata
 					ActiveLobbyId = ResultValue.Lobby->LobbyId;
 					//UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Lobby creata con successo! Lobby ID: %s"), *ToLogString(ResultValue.Lobby->LobbyId));
-					UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Lobby creata con successo! Lobby ID: %s"), *ToLogString(ActiveLobbyId));
+					UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Lobby creata con successo! Lobby ID: %s; Membri=%d; Leader=%s"), *ToLogString(ActiveLobbyId), CachedActiveLobby->Members.Num(), *ToLogString(CachedActiveLobby->OwnerAccountId));
 
+					
+					// Indichiamo al subsystem che ora abbiamo una Lobby attiva
+					bHasActiveLobby = true;
 					// Avvisiamo la UI che tutto è andato bene
 					OnEpicLobbyCreateComplete.Broadcast(true);
-					OnEpicLobbyCreateComplete.Broadcast(true);
+					OnEpicLobbyJoinComplete.Broadcast(true);
 				}
 				else
 				{
@@ -1674,6 +1682,62 @@ void UEosGameInstanceSubsystemDRB::FinalizeSuccessfulLogin(FPlatformUserId Platf
 					HandleExternalUIStatusChanged(EventParams);
 				});
 	}
+	/*
+	if (OnlineServicesInfoInternal->LobbiesInterface.IsValid())
+	{
+		// 1. Ascolto: Cambiamenti generali della Lobby (avvio partita o cambio "Pronto")
+		OnlineServicesInfoInternal->LobbyUpdateHandle = OnlineServicesInfoInternal->LobbiesInterface->OnLobbyAttributesChanged().Add(
+			[this](const UE::Online::FLobbyAttributesChanged& EventParams)
+			{
+				// OSSv2 ci dice solo che la LobbyId indicata è cambiata.
+				// Notifichiamo la UI. Nel Blueprint potrai controllare la Cache se necessario, 
+				// o usare questo trigger per sbloccare il tasto di caricamento livello.
+				UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Lobby %s aggiornata."), *UE::Online::ToLogString(EventParams.LobbyId));
+				OnEpicLobbyMatchStarted.Broadcast(true);
+			});
+
+		// 2. Ascolto: Cambio Host (Promozione manuale o Host precedente disconnesso)
+		OnlineServicesInfoInternal->LobbyLeaderChangeHandle = OnlineServicesInfoInternal->LobbiesInterface->OnLobbyLeaderChanged().Add(
+			[this](const FLobbyLeaderChanged& EventParams)
+			{
+				FString NewLeaderIdStr = ToLogString(EventParams.Leader->AccountId); //ToLogString(EventParams.AccountId); 
+				UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Nuovo leader: %s"), *NewLeaderIdStr);
+				
+				OnEpicLobbyLeaderChanged.Broadcast(NewLeaderIdStr);
+			});
+			
+		OnlineServicesInfoInternal->LobbyMemberUpdateHandle = OnlineServicesInfoInternal->LobbiesInterface->OnLobbyMemberAttributesChanged().Add(
+			[this](const UE::Online::FLobbyMemberAttributesChanged& EventParams)
+			{
+				FString MemberIdStr = UE::Online::ToLogString(EventParams.AccountId);
+				
+				// Dato che l'evento non fornisce il valore booleano esatto, 
+				// passiamo "true" come trigger generico. Nel Blueprint della UI, quando ricevi
+				// questo evento per questo MemberIdStr, aggiorna la grafica del giocatore.
+				OnEpicLobbyMemberReadyChanged.Broadcast(MemberIdStr, true);
+			});
+			
+		// 3. Ascolto: Uscita o Espulsione Giocatore
+		OnlineServicesInfoInternal->LobbiesInterface->OnLobbyMemberLeft().Add(
+			[this](const FLobbyMemberLeft& EventParams)
+			{
+				CachedActiveLobby = EventParams.Lobby;
+				if (EventParams.Reason == ELobbyMemberLeaveReason::Kicked)
+				{
+					FString LeftMemberStr = ToLogString(EventParams.Member->AccountId);//ToLogString(EventParams.AccountId);
+					UE_LOG(LogEosGameInstanceSubsystemDRB, Warning, TEXT("Giocatore espulso: %s"), *LeftMemberStr);
+					
+					// Avvisa il client interessato che è stato espulso per tornare al menu
+					OnEpicLobbyKicked.Broadcast(true); 
+				}
+				else 
+				{
+					// Se un utente è semplicemente uscito, aggiorna la UI rimuovendolo
+					OnEpicLobbyMemberLeft.Broadcast(ToLogString(EventParams.Member->AccountId));
+				}
+			});
+	}
+	*/
 
 	// Aggancio Inviti Lobby
 	if (OnlineServicesInfoInternal->LobbiesInterface.IsValid())
@@ -2035,7 +2099,7 @@ void UEosGameInstanceSubsystemDRB::ShowEpicLoginUI(
 
 
 
-/*
+
 int32 UEosGameInstanceSubsystemDRB::GetActiveLobbyMemberCount() const
 {
 	if (!bHasActiveLobby ||
@@ -2047,21 +2111,1249 @@ int32 UEosGameInstanceSubsystemDRB::GetActiveLobbyMemberCount() const
 
 	//using namespace UE::Online;
 	//
-	///
+	/*
 	 * Qui non abbiamo una cache locale del FLobby.
 	 * Quindi, per il momento il valore va mantenuto
 	 * tramite l'ultimo FLobby ricevuto dagli eventi.
 	 *
 	 * La soluzione migliore sarà aggiungere una
 	 * CachedActiveLobby.
-	 ///
+	 */
 	//
 	//return 0;
 	
 	return CachedActiveLobby->Members.Num();
 }
+
+bool UEosGameInstanceSubsystemDRB::IsEpicLobbyLeader(
+	APlayerController* PlayerController
+) const
+{
+	if (!PlayerController ||
+		!PlayerController->GetLocalPlayer() ||
+		!CachedActiveLobby.IsValid())
+	{
+		return false;
+	}
+
+	const FPlatformUserId PlatformUserId =
+		PlayerController->GetLocalPlayer()->GetPlatformUserId();
+
+	const UOnlineUserInfo* UserInfo =
+		OnlineUserInfos.FindRef(PlatformUserId);
+
+	if (!UserInfo)
+	{
+		return false;
+	}
+
+	return CachedActiveLobby->OwnerAccountId ==
+		UserInfo->AccountId;
+}
+
+
+/*
+// ============================================================
+// READY / UNREADY STATUS
+// ============================================================
+void UEosGameInstanceSubsystemDRB::SetReadyStatus(APlayerController* PlayerController, bool bIsReady)
+{
+	using namespace UE::Online;
+
+	if (!PlayerController || !PlayerController->GetLocalPlayer() || !OnlineServicesInfoInternal->LobbiesInterface.IsValid() || !ActiveLobbyId.IsValid()) return;
+
+	FPlatformUserId PlatformUserId = PlayerController->GetLocalPlayer()->GetPlatformUserId();
+	TObjectPtr<UOnlineUserInfo> UserInfo = GetOnlineUserInfo(PlatformUserId);
+	if (!UserInfo) return;
+
+	FModifyLobbyMemberAttributes::Params ModifyParams;
+	ModifyParams.LocalAccountId = UserInfo->AccountId;
+	ModifyParams.LobbyId = ActiveLobbyId;
+
+	// MutatedAttributes è la variabile corretta per OSSv2
+	ModifyParams.MutatedAttributes.Add(FName(TEXT("IsReady")), bIsReady);
+
+	OnlineServicesInfoInternal->LobbiesInterface->ModifyLobbyMemberAttributes(MoveTemp(ModifyParams))
+		.OnComplete([this](const TOnlineResult<FModifyLobbyMemberAttributes>& Result)
+		{
+			if (!Result.IsOk())
+			{
+				UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Errore aggiornamento Ready Status: %s"), *Result.GetErrorValue().GetLogString());
+			}
+			else
+			{
+				UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Stato Ready inviato con successo al server."));
+			}
+		});
+}
+
+// ============================================================
+// ESPULSIONE GIOCATORE (KICK)
+// ============================================================
+void UEosGameInstanceSubsystemDRB::KickPlayerFromLobby(APlayerController* PlayerController, FString TargetAccountIdStr)
+{
+	using namespace UE::Online;
+
+	if (!PlayerController || !PlayerController->GetLocalPlayer() || !OnlineServicesInfoInternal->LobbiesInterface.IsValid() || !ActiveLobbyId.IsValid()) return;
+
+	FPlatformUserId PlatformUserId = PlayerController->GetLocalPlayer()->GetPlatformUserId();
+	TObjectPtr<UOnlineUserInfo> UserInfo = GetOnlineUserInfo(PlatformUserId);
+	if (!UserInfo) return;
+
+	FAccountId TargetAccountId;
+	if (TryGetAccountIdFromString(TargetAccountIdStr, TargetAccountId))
+	{
+		FKickLobbyMember::Params KickParams;
+		KickParams.LocalAccountId = UserInfo->AccountId;
+		KickParams.LobbyId = ActiveLobbyId;
+		KickParams.TargetAccountId = TargetAccountId;
+
+		OnlineServicesInfoInternal->LobbiesInterface->KickLobbyMember(MoveTemp(KickParams))
+			.OnComplete([this](const TOnlineResult<FKickLobbyMember>& Result)
+			{
+				if (!Result.IsOk())
+				{
+					UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Errore Kick: %s"), *Result.GetErrorValue().GetLogString());
+				}
+			});
+	}
+}
+
+// ============================================================
+// PROMUOVI A CAPOSQUADRA
+// ============================================================
+void UEosGameInstanceSubsystemDRB::PromotePlayerToHost(APlayerController* PlayerController, FString TargetAccountIdStr)
+{
+	using namespace UE::Online;
+
+	if (!PlayerController || !PlayerController->GetLocalPlayer() || !OnlineServicesInfoInternal->LobbiesInterface.IsValid() || !ActiveLobbyId.IsValid()) return;
+
+	FPlatformUserId PlatformUserId = PlayerController->GetLocalPlayer()->GetPlatformUserId();
+	TObjectPtr<UOnlineUserInfo> UserInfo = GetOnlineUserInfo(PlatformUserId);
+	if (!UserInfo) return;
+
+	FAccountId TargetAccountId;
+	if (TryGetAccountIdFromString(TargetAccountIdStr, TargetAccountId))
+	{
+		FPromoteLobbyMember::Params PromoteParams;
+		PromoteParams.LocalAccountId = UserInfo->AccountId;
+		PromoteParams.LobbyId = ActiveLobbyId;
+		PromoteParams.TargetAccountId = TargetAccountId;
+
+		OnlineServicesInfoInternal->LobbiesInterface->PromoteLobbyMember(MoveTemp(PromoteParams))
+			.OnComplete([this](const TOnlineResult<FPromoteLobbyMember>& Result)
+			{
+				if (!Result.IsOk())
+				{
+					UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Errore promozione: %s"), *Result.GetErrorValue().GetLogString());
+				}
+			});
+	}
+}
+
+// ============================================================
+// AVVIO PARTITA
+// ============================================================
+void UEosGameInstanceSubsystemDRB::StartLobbyMatch(APlayerController* PlayerController)
+{
+	using namespace UE::Online;
+
+	if (!PlayerController || !PlayerController->GetLocalPlayer() || !OnlineServicesInfoInternal->LobbiesInterface.IsValid() || !ActiveLobbyId.IsValid()) return;
+
+	FPlatformUserId PlatformUserId = PlayerController->GetLocalPlayer()->GetPlatformUserId();
+	TObjectPtr<UOnlineUserInfo> UserInfo = GetOnlineUserInfo(PlatformUserId);
+	if (!UserInfo) return;
+
+	FModifyLobbyAttributes::Params ModifyParams;
+	ModifyParams.LocalAccountId = UserInfo->AccountId;
+	ModifyParams.LobbyId = ActiveLobbyId;
+	
+	// Modifichiamo i dati globali della Lobby per segnalare l'inizio partita
+	ModifyParams.MutatedAttributes.Add(FName(TEXT("bMatchStarted")), true);
+
+	OnlineServicesInfoInternal->LobbiesInterface->ModifyLobbyAttributes(MoveTemp(ModifyParams))
+		.OnComplete([this](const TOnlineResult<FModifyLobbyAttributes>& Result)
+		{
+			if (!Result.IsOk())
+			{
+				UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Errore avvio partita: %s"), *Result.GetErrorValue().GetLogString());
+			}
+		});
+}
 */
 
+
+static FString SchemaVariantToString(
+	const UE::Online::FSchemaVariant& Value
+)
+{
+	using namespace UE::Online;
+
+	switch (Value.GetType())
+	{
+	case ESchemaAttributeType::String:
+		return Value.GetString();
+
+	case ESchemaAttributeType::Int64:
+		return FString::Printf(
+			TEXT("%lld"),
+			Value.GetInt64()
+		);
+
+	case ESchemaAttributeType::Double:
+		return FString::SanitizeFloat(
+			Value.GetDouble()
+		);
+
+	case ESchemaAttributeType::Bool:
+		return Value.GetBoolean()
+			? TEXT("true")
+			: TEXT("false");
+
+	default:
+		return FString();
+	}
+}
+
+
+void UEosGameInstanceSubsystemDRB::BindLobbyEvents()
+{
+    if (!OnlineServicesInfoInternal)
+    {
+        return;
+    }
+
+    if (!OnlineServicesInfoInternal->LobbiesInterface.IsValid())
+    {
+        UE_LOG(
+            LogEosGameInstanceSubsystemDRB,
+            Error,
+            TEXT("Cannot bind lobby events: LobbiesInterface invalid")
+        );
+
+        return;
+    }
+
+    auto& Lobbies = OnlineServicesInfoInternal->LobbiesInterface;
+
+
+    // ------------------------------------------------------------------------
+    // Lobby Joined
+    // ------------------------------------------------------------------------
+
+    OnlineServicesInfoInternal->LobbyJoinedHandle.Unbind();
+
+    OnlineServicesInfoInternal->LobbyJoinedHandle =
+        Lobbies->OnLobbyJoined().Add(
+            [this](const UE::Online::FLobbyJoined& EventParams)
+            {
+                HandleLobbyJoined(EventParams);
+            }
+        );
+
+
+    // ------------------------------------------------------------------------
+    // Lobby Left
+    // ------------------------------------------------------------------------
+
+    OnlineServicesInfoInternal->LobbyLeftHandle.Unbind();
+
+    OnlineServicesInfoInternal->LobbyLeftHandle =
+        Lobbies->OnLobbyLeft().Add(
+            [this](const UE::Online::FLobbyLeft& EventParams)
+            {
+                HandleLobbyLeft(EventParams);
+            }
+        );
+
+
+    // ------------------------------------------------------------------------
+    // Member Joined
+    // ------------------------------------------------------------------------
+
+    OnlineServicesInfoInternal->LobbyMemberJoinedHandle.Unbind();
+
+    OnlineServicesInfoInternal->LobbyMemberJoinedHandle =
+        Lobbies->OnLobbyMemberJoined().Add(
+            [this](const UE::Online::FLobbyMemberJoined& EventParams)
+            {
+                HandleLobbyMemberJoined(EventParams);
+            }
+        );
+
+
+    // ------------------------------------------------------------------------
+    // Member Left
+    // ------------------------------------------------------------------------
+
+    OnlineServicesInfoInternal->LobbyMemberLeftHandle.Unbind();
+
+    OnlineServicesInfoInternal->LobbyMemberLeftHandle =
+        Lobbies->OnLobbyMemberLeft().Add(
+            [this](const UE::Online::FLobbyMemberLeft& EventParams)
+            {
+                HandleLobbyMemberLeft(EventParams);
+            }
+        );
+
+
+    // ------------------------------------------------------------------------
+    // Leader Changed
+    // ------------------------------------------------------------------------
+
+    OnlineServicesInfoInternal->LobbyLeaderChangedHandle.Unbind();
+
+    OnlineServicesInfoInternal->LobbyLeaderChangedHandle =
+        Lobbies->OnLobbyLeaderChanged().Add(
+            [this](const UE::Online::FLobbyLeaderChanged& EventParams)
+            {
+                HandleLobbyLeaderChanged(EventParams);
+            }
+        );
+
+
+    // ------------------------------------------------------------------------
+    // Member Attributes Changed
+    // ------------------------------------------------------------------------
+
+    OnlineServicesInfoInternal->LobbyMemberAttributesChangedHandle.Unbind();
+
+    OnlineServicesInfoInternal->LobbyMemberAttributesChangedHandle =
+        Lobbies->OnLobbyMemberAttributesChanged().Add(
+            [this](const UE::Online::FLobbyMemberAttributesChanged& EventParams)
+            {
+                HandleLobbyMemberAttributesChanged(EventParams);
+            }
+        );
+
+
+    // ------------------------------------------------------------------------
+    // Lobby Attributes Changed
+    // ------------------------------------------------------------------------
+
+    OnlineServicesInfoInternal->LobbyAttributesChangedHandle.Unbind();
+
+    OnlineServicesInfoInternal->LobbyAttributesChangedHandle =
+        Lobbies->OnLobbyAttributesChanged().Add(
+            [this](const UE::Online::FLobbyAttributesChanged& EventParams)
+            {
+                HandleLobbyAttributesChanged(EventParams);
+            }
+        );
+}
+
+
+void UEosGameInstanceSubsystemDRB::UnbindLobbyEvents()
+{
+	if (!OnlineServicesInfoInternal)
+	{
+		return;
+	}
+
+	OnlineServicesInfoInternal->LobbyJoinedHandle.Unbind();
+	OnlineServicesInfoInternal->LobbyLeftHandle.Unbind();
+	OnlineServicesInfoInternal->LobbyMemberJoinedHandle.Unbind();
+	OnlineServicesInfoInternal->LobbyMemberLeftHandle.Unbind();
+	OnlineServicesInfoInternal->LobbyLeaderChangedHandle.Unbind();
+	OnlineServicesInfoInternal->LobbyMemberAttributesChangedHandle.Unbind();
+	OnlineServicesInfoInternal->LobbyAttributesChangedHandle.Unbind();
+}
+
+
+
+void UEosGameInstanceSubsystemDRB::HandleLobbyJoined(
+	const UE::Online::FLobbyJoined& EventParams
+)
+{
+	CachedActiveLobby = EventParams.Lobby;
+
+	ActiveLobbyId =
+		EventParams.Lobby->LobbyId;
+
+	bHasActiveLobby = true;
+
+	UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("LobbyJoined: Lobby=%s Members=%d Leader=%s"),
+		*UE::Online::ToLogString(EventParams.Lobby->LobbyId),
+		EventParams.Lobby->Members.Num(),
+		*UE::Online::ToLogString(EventParams.Lobby->OwnerAccountId)
+	);
+}
+
+void UEosGameInstanceSubsystemDRB::HandleLobbyLeft(
+	const UE::Online::FLobbyLeft& EventParams
+)
+{
+	const UE::Online::FLobby& Lobby =
+		EventParams.Lobby.Get();
+
+	UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("LobbyLeft: Lobby=%s"), *UE::Online::ToLogString(Lobby.LobbyId)
+	);
+
+	CachedActiveLobby.Reset();
+
+	ActiveLobbyId =
+		UE::Online::FLobbyId();
+
+	bHasActiveLobby = false;
+
+	OnEpicLobbyLeft.Broadcast(
+		UE::Online::ToLogString(
+			Lobby.LobbyId
+		)
+	);
+}
+
+void UEosGameInstanceSubsystemDRB::HandleLobbyMemberJoined(
+	const UE::Online::FLobbyMemberJoined& EventParams
+)
+{
+	CachedActiveLobby = EventParams.Lobby;
+
+	const FString MemberAccountId =
+		UE::Online::ToString(
+			EventParams.Member->AccountId
+		);
+
+	UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("LobbyMemberJoined: Account= %s"), *MemberAccountId);
+
+	OnEpicLobbyMemberJoined.Broadcast(
+		MemberAccountId
+	);
+}
+
+void UEosGameInstanceSubsystemDRB::HandleLobbyMemberLeft(
+	const UE::Online::FLobbyMemberLeft& EventParams
+)
+{
+	CachedActiveLobby = EventParams.Lobby;
+
+	const FString MemberAccountId =
+		UE::Online::ToString(
+			EventParams.Member->AccountId
+		);
+
+	const FString LeaveReason =
+		UE::Online::LexToString(
+			EventParams.Reason
+		);
+
+	UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("LobbyMemberLeft: Account=%s Reason=%s"), *MemberAccountId, *LeaveReason);
+
+	OnEpicLobbyMemberLeft.Broadcast(MemberAccountId, LeaveReason);
+}
+
+void UEosGameInstanceSubsystemDRB::HandleLobbyLeaderChanged(
+	const UE::Online::FLobbyLeaderChanged& EventParams
+)
+{
+	CachedActiveLobby = EventParams.Lobby;
+
+	const FString NewLeaderAccountId =
+		UE::Online::ToString(
+			EventParams.Leader->AccountId
+		);
+
+	UE_LOG(
+		LogEosGameInstanceSubsystemDRB,
+		Log,
+		TEXT("LobbyLeaderChanged: NewLeader=%s"),
+		*NewLeaderAccountId
+	);
+
+	OnEpicLobbyLeaderChanged.Broadcast(
+		NewLeaderAccountId
+	);
+}
+
+void UEosGameInstanceSubsystemDRB::HandleLobbyAttributesChanged(
+	const UE::Online::FLobbyAttributesChanged& EventParams
+)
+{
+	CachedActiveLobby = EventParams.Lobby;
+
+
+	for (const TPair<
+		UE::Online::FSchemaAttributeId,
+		UE::Online::FSchemaVariant>& Added :
+		EventParams.AddedAttributes)
+	{
+		const FString AttributeName =
+			Added.Key.ToString();
+
+		const FString AttributeValue =
+			SchemaVariantToString(
+				Added.Value
+			);
+
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Log,
+			TEXT(
+				"LobbyAttributeAdded: %s=%s"
+			),
+			*AttributeName,
+			*AttributeValue
+		);
+
+		OnEpicLobbyAttributesChanged.Broadcast(
+			AttributeName,
+			AttributeValue
+		);
+	}
+
+
+	for (const TPair<
+		UE::Online::FSchemaAttributeId,
+		TPair<
+			UE::Online::FSchemaVariant,
+			UE::Online::FSchemaVariant
+		>>& Changed :
+		EventParams.ChangedAttributes)
+	{
+		const FString AttributeName =
+			Changed.Key.ToString();
+
+		const FString AttributeValue =
+			SchemaVariantToString(
+				Changed.Value.Value
+			);
+
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Log,
+			TEXT(
+				"LobbyAttributeChanged: %s=%s"
+			),
+			*AttributeName,
+			*AttributeValue
+		);
+
+		OnEpicLobbyAttributesChanged.Broadcast(
+			AttributeName,
+			AttributeValue
+		);
+	}
+}
+
+
+void UEosGameInstanceSubsystemDRB::HandleLobbyMemberAttributesChanged(
+	const UE::Online::FLobbyMemberAttributesChanged& EventParams
+)
+{
+	CachedActiveLobby = EventParams.Lobby;
+
+	const FString MemberAccountId =
+		UE::Online::ToString(
+			EventParams.Member->AccountId
+		);
+
+
+	for (const TPair<
+		UE::Online::FSchemaAttributeId,
+		UE::Online::FSchemaVariant>& Added :
+		EventParams.AddedAttributes)
+	{
+		const FString AttributeName =
+			Added.Key.ToString();
+
+		const FString AttributeValue =
+			SchemaVariantToString(
+				Added.Value
+			);
+
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Log,
+			TEXT(
+				"LobbyMemberAttributeAdded: Member=%s Attribute=%s Value=%s"
+			),
+			*MemberAccountId,
+			*AttributeName,
+			*AttributeValue
+		);
+
+		OnEpicLobbyMemberAttributesChanged.Broadcast(
+			MemberAccountId,
+			AttributeName,
+			AttributeValue
+		);
+	}
+
+
+	for (const TPair<
+		UE::Online::FSchemaAttributeId,
+		TPair<
+			UE::Online::FSchemaVariant,
+			UE::Online::FSchemaVariant
+		>>& Changed :
+		EventParams.ChangedAttributes)
+	{
+		const FString AttributeName =
+			Changed.Key.ToString();
+
+		const FString AttributeValue =
+			SchemaVariantToString(
+				Changed.Value.Value
+			);
+
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Log,
+			TEXT(
+				"LobbyMemberAttributeChanged: Member=%s Attribute=%s Value=%s"
+			),
+			*MemberAccountId,
+			*AttributeName,
+			*AttributeValue
+		);
+
+		OnEpicLobbyMemberAttributesChanged.Broadcast(
+			MemberAccountId,
+			AttributeName,
+			AttributeValue
+		);
+	}
+}
+
+
+bool UEosGameInstanceSubsystemDRB::TryGetAccountIdFromString(const FString& AccountIdString,
+	UE::Online::FAccountId& OutAccountId) const
+{
+	if (AccountIdString.IsEmpty())
+	{
+		return false;
+	}
+
+	OutAccountId =
+		UE::Online::FOnlineIdRegistryRegistry::Get().ToAccountId(
+			UE::Online::EOnlineServices::Epic,
+			AccountIdString
+		);
+
+	return OutAccountId.IsValid();
+}
+
+
+
+void UEosGameInstanceSubsystemDRB::KickEpicLobbyMember(
+    APlayerController* PlayerController,
+    FString TargetAccountIdString
+)
+{
+    using namespace UE::Online;
+
+    if (!PlayerController ||
+        !PlayerController->GetLocalPlayer())
+    {
+        OnEpicLobbyKickComplete.Broadcast(false);
+        return;
+    }
+
+    if (!OnlineServicesInfoInternal ||
+        !OnlineServicesInfoInternal->LobbiesInterface.IsValid())
+    {
+        OnEpicLobbyKickComplete.Broadcast(false);
+        return;
+    }
+
+    if (!bHasActiveLobby)
+    {
+        OnEpicLobbyKickComplete.Broadcast(false);
+        return;
+    }
+
+    if (!IsEpicLobbyLeader(PlayerController))
+    {
+        UE_LOG(
+            LogEosGameInstanceSubsystemDRB,
+            Warning,
+            TEXT("Kick denied: local player is not lobby leader")
+        );
+
+        OnEpicLobbyKickComplete.Broadcast(false);
+        return;
+    }
+
+    const FPlatformUserId PlatformUserId =
+        PlayerController->GetLocalPlayer()
+            ->GetPlatformUserId();
+
+    TObjectPtr<UOnlineUserInfo> UserInfo =
+        GetOnlineUserInfo(PlatformUserId);
+
+    if (!UserInfo)
+    {
+        OnEpicLobbyKickComplete.Broadcast(false);
+        return;
+    }
+
+    FAccountId TargetAccountId;
+
+    if (!TryGetAccountIdFromString(
+        TargetAccountIdString,
+        TargetAccountId))
+    {
+        UE_LOG(
+            LogEosGameInstanceSubsystemDRB,
+            Error,
+            TEXT("Kick: invalid TargetAccountIdString: %s"),
+            *TargetAccountIdString
+        );
+
+        OnEpicLobbyKickComplete.Broadcast(false);
+        return;
+    }
+
+    FKickLobbyMember::Params Params;
+
+    Params.LocalAccountId =
+        UserInfo->AccountId;
+
+    Params.LobbyId =
+        ActiveLobbyId;
+
+    Params.TargetAccountId =
+        TargetAccountId;
+
+
+    OnlineServicesInfoInternal->LobbiesInterface
+        ->KickLobbyMember(MoveTemp(Params))
+        .OnComplete(
+            [this](
+                const TOnlineResult<FKickLobbyMember>& Result
+            )
+            {
+                const bool bSuccess =
+                    Result.IsOk();
+
+                if (!bSuccess)
+                {
+                    UE_LOG(
+                        LogEosGameInstanceSubsystemDRB,
+                        Error,
+                        TEXT("KickLobbyMember failed")
+                    );
+                }
+
+                OnEpicLobbyKickComplete.Broadcast(
+                    bSuccess
+                );
+            }
+        );
+}
+
+void UEosGameInstanceSubsystemDRB::PromoteEpicLobbyMember(
+    APlayerController* PlayerController,
+    FString TargetAccountIdString
+)
+{
+    using namespace UE::Online;
+
+    if (!PlayerController ||
+        !PlayerController->GetLocalPlayer())
+    {
+        OnEpicLobbyPromoteComplete.Broadcast(false);
+        return;
+    }
+
+    if (!OnlineServicesInfoInternal ||
+        !OnlineServicesInfoInternal->LobbiesInterface.IsValid())
+    {
+        OnEpicLobbyPromoteComplete.Broadcast(false);
+        return;
+    }
+
+    if (!bHasActiveLobby)
+    {
+        OnEpicLobbyPromoteComplete.Broadcast(false);
+        return;
+    }
+
+    if (!IsEpicLobbyLeader(PlayerController))
+    {
+        UE_LOG(
+            LogEosGameInstanceSubsystemDRB,
+            Warning,
+            TEXT("Promote denied: local player is not lobby leader")
+        );
+
+        OnEpicLobbyPromoteComplete.Broadcast(false);
+        return;
+    }
+
+    const FPlatformUserId PlatformUserId =
+        PlayerController->GetLocalPlayer()
+            ->GetPlatformUserId();
+
+    TObjectPtr<UOnlineUserInfo> UserInfo =
+        GetOnlineUserInfo(PlatformUserId);
+
+    if (!UserInfo)
+    {
+        OnEpicLobbyPromoteComplete.Broadcast(false);
+        return;
+    }
+
+    FAccountId TargetAccountId;
+
+    if (!TryGetAccountIdFromString(
+        TargetAccountIdString,
+        TargetAccountId))
+    {
+        OnEpicLobbyPromoteComplete.Broadcast(false);
+        return;
+    }
+
+    FPromoteLobbyMember::Params Params;
+
+    Params.LocalAccountId =
+        UserInfo->AccountId;
+
+    Params.LobbyId =
+        ActiveLobbyId;
+
+    Params.TargetAccountId =
+        TargetAccountId;
+
+
+    OnlineServicesInfoInternal->LobbiesInterface
+        ->PromoteLobbyMember(MoveTemp(Params))
+        .OnComplete(
+            [this](
+                const TOnlineResult<FPromoteLobbyMember>& Result
+            )
+            {
+                const bool bSuccess =
+                    Result.IsOk();
+
+                if (!bSuccess)
+                {
+                    UE_LOG(
+                        LogEosGameInstanceSubsystemDRB,
+                        Error,
+                        TEXT("PromoteLobbyMember failed")
+                    );
+                }
+
+                OnEpicLobbyPromoteComplete.Broadcast(
+                    bSuccess
+                );
+            }
+        );
+}
+
+void UEosGameInstanceSubsystemDRB::InviteEpicLobbyMember(
+	APlayerController* PlayerController,
+	FString TargetAccountIdString
+)
+{
+	using namespace UE::Online;
+
+	if (!PlayerController ||
+		!PlayerController->GetLocalPlayer())
+	{
+		return;
+	}
+
+	if (!OnlineServicesInfoInternal ||
+		!OnlineServicesInfoInternal->LobbiesInterface.IsValid())
+	{
+		return;
+	}
+
+	if (!bHasActiveLobby)
+	{
+		return;
+	}
+
+	const FPlatformUserId PlatformUserId =
+		PlayerController->GetLocalPlayer()
+			->GetPlatformUserId();
+
+	TObjectPtr<UOnlineUserInfo> UserInfo =
+		GetOnlineUserInfo(PlatformUserId);
+
+	if (!UserInfo)
+	{
+		return;
+	}
+
+	FAccountId TargetAccountId;
+
+	if (!TryGetAccountIdFromString(
+		TargetAccountIdString,
+		TargetAccountId))
+	{
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Error,
+			TEXT("Invite: invalid TargetAccountIdString")
+		);
+
+		return;
+	}
+
+	FInviteLobbyMember::Params Params;
+
+	Params.LocalAccountId =
+		UserInfo->AccountId;
+
+	Params.LobbyId =
+		ActiveLobbyId;
+
+	Params.TargetAccountId =
+		TargetAccountId;
+
+
+	OnlineServicesInfoInternal->LobbiesInterface
+		->InviteLobbyMember(MoveTemp(Params))
+		.OnComplete(
+			[](
+				const TOnlineResult<FInviteLobbyMember>& Result
+			)
+			{
+				if (Result.IsOk())
+				{
+					UE_LOG(
+						LogEosGameInstanceSubsystemDRB,
+						Log,
+						TEXT("Lobby invitation sent")
+					);
+				}
+				else
+				{
+					UE_LOG(
+						LogEosGameInstanceSubsystemDRB,
+						Error,
+						TEXT("Lobby invitation failed")
+					);
+				}
+			}
+		);
+}
+
+void UEosGameInstanceSubsystemDRB::SetEpicLobbyReady(
+	APlayerController* PlayerController,
+	bool bReady
+)
+{
+	if (!PlayerController ||
+		!PlayerController->GetLocalPlayer())
+	{
+		return;
+	}
+
+	if (!OnlineServicesInfoInternal ||
+		!OnlineServicesInfoInternal->LobbiesInterface.IsValid())
+	{
+		return;
+	}
+
+	if (!bHasActiveLobby)
+	{
+		return;
+	}
+
+	const FPlatformUserId PlatformUserId =
+		PlayerController->GetLocalPlayer()->GetPlatformUserId();
+
+	TObjectPtr<UOnlineUserInfo> UserInfo =
+		GetOnlineUserInfo(PlatformUserId);
+
+	if (!UserInfo)
+	{
+		return;
+	}
+
+	using namespace UE::Online;
+
+	FModifyLobbyMemberAttributes::Params Params;
+
+	Params.LocalAccountId =
+		UserInfo->AccountId;
+
+	Params.LobbyId =
+		ActiveLobbyId;
+
+	Params.UpdatedAttributes.Add(
+		FSchemaAttributeId(TEXT("bIsReady")),
+		FSchemaVariant(bReady)
+	);
+
+	OnlineServicesInfoInternal->LobbiesInterface
+		->ModifyLobbyMemberAttributes(MoveTemp(Params))
+		.OnComplete(
+			[](const TOnlineResult<FModifyLobbyMemberAttributes>& Result)
+			{
+				if (!Result.IsOk())
+				{
+					UE_LOG(
+						LogEosGameInstanceSubsystemDRB,
+						Error,
+						TEXT("SetEpicLobbyReady failed")
+					);
+				}
+			}
+		);
+}
+
+
+bool UEosGameInstanceSubsystemDRB::IsInEpicLobby() const
+{
+	return bHasActiveLobby;
+}
+
+FString UEosGameInstanceSubsystemDRB::GetActiveLobbyIdString() const
+{
+	if (!bHasActiveLobby)
+	{
+		return FString();
+	}
+
+	return UE::Online::ToLogString(
+		ActiveLobbyId
+	);
+}
+
+FString UEosGameInstanceSubsystemDRB::GetActiveLobbyName() const
+{
+	if (!bHasActiveLobby || !CachedActiveLobby.IsValid())
+	{
+		return FString();
+	}
+
+	if (const UE::Online::FSchemaVariant* NameVariant =
+		CachedActiveLobby->Attributes.Find(FName(TEXT("LobbyName"))))
+	{
+		return NameVariant->GetString();
+	}
+
+	return FString();
+}
+
+/*
+FString UEosGameInstanceSubsystemDRB::GetActiveLobbyLeaderDisplayName() const
+{
+	if (!bHasActiveLobby || !CachedActiveLobby.IsValid())
+	{
+		return FString();
+	}
+
+	const TSharedRef<const UE::Online::FLobbyMember>* LeaderMember =
+		CachedActiveLobby->Members.Find(
+			CachedActiveLobby->OwnerAccountId
+		);
+
+	if (LeaderMember)
+	{
+		//return (*LeaderMember)->PlatformDisplayName;
+		OnlineServicesInfoInternal->UserInfoInterface
+	}
+
+	return FString();
+}
+*/
+
+TArray<FDRBLobbyMemberInfo>
+UEosGameInstanceSubsystemDRB::GetActiveLobbyMembers() const
+{
+	TArray<FDRBLobbyMemberInfo> Result;
+
+	if (!bHasActiveLobby ||
+		!CachedActiveLobby.IsValid())
+	{
+		return Result;
+	}
+
+	for (const TPair<
+		UE::Online::FAccountId,
+		TSharedRef<const UE::Online::FLobbyMember>>& Pair
+		: CachedActiveLobby->Members)
+	{
+		const UE::Online::FAccountId& AccountId =
+			Pair.Key;
+
+		const TSharedRef<const UE::Online::FLobbyMember>& Member =
+			Pair.Value;
+
+		FDRBLobbyMemberInfo Info;
+
+		Info.AccountId =
+			UE::Online::ToString(AccountId);
+
+		if (const FString* DisplayName =
+			CachedLobbyMemberDisplayNames.Find(Info.AccountId))
+		{
+			Info.DisplayName = *DisplayName;
+		}
+		else
+		{
+			Info.DisplayName = TEXT("Caricamento...");
+		}
+
+		Info.bIsLeader =
+			(AccountId == CachedActiveLobby->OwnerAccountId);
+
+		Info.bIsLocalMember =
+			Member->bIsLocalMember;
+
+		Result.Add(MoveTemp(Info));
+	}
+
+	return Result;
+}
+
+void UEosGameInstanceSubsystemDRB::QueryActiveLobbyMemberNicknames(
+	APlayerController* PlayerController
+)
+{
+	using namespace UE::Online;
+
+	if (!PlayerController ||
+		!PlayerController->GetLocalPlayer())
+	{
+		OnEpicLobbyMemberNicknamesReady.Broadcast(false);
+		return;
+	}
+
+	if (!bHasActiveLobby ||
+		!CachedActiveLobby.IsValid())
+	{
+		OnEpicLobbyMemberNicknamesReady.Broadcast(false);
+		return;
+	}
+
+	if (!OnlineServicesInfoInternal ||
+		!OnlineServicesInfoInternal->UserInfoInterface.IsValid())
+	{
+		OnEpicLobbyMemberNicknamesReady.Broadcast(false);
+		return;
+	}
+
+	const FPlatformUserId PlatformUserId =
+		PlayerController->GetLocalPlayer()->GetPlatformUserId();
+
+	TObjectPtr<UOnlineUserInfo> LocalUserInfo =
+		GetOnlineUserInfo(PlatformUserId);
+
+	if (!LocalUserInfo)
+	{
+		OnEpicLobbyMemberNicknamesReady.Broadcast(false);
+		return;
+	}
+
+	const FAccountId LocalAccountId =
+		LocalUserInfo->AccountId;
+
+	TArray<FAccountId> AccountIds;
+
+	for (const TPair<
+		FAccountId,
+		TSharedRef<const FLobbyMember>>& Pair
+		: CachedActiveLobby->Members)
+	{
+		AccountIds.Add(Pair.Key);
+	}
+
+	if (AccountIds.Num() == 0)
+	{
+		CachedLobbyMemberDisplayNames.Empty();
+
+		OnEpicLobbyMemberNicknamesReady.Broadcast(true);
+		return;
+	}
+
+	FQueryUserInfo::Params QueryParams;
+
+	QueryParams.LocalAccountId = LocalAccountId;
+	QueryParams.AccountIds = AccountIds;
+
+	OnlineServicesInfoInternal->UserInfoInterface
+		->QueryUserInfo(MoveTemp(QueryParams))
+		.OnComplete(
+			[this, LocalAccountId, AccountIds](
+				const TOnlineResult<FQueryUserInfo>& Result
+			)
+			{
+				if (!Result.IsOk())
+				{
+					UE_LOG(
+						LogEosGameInstanceSubsystemDRB,
+						Error,
+						TEXT("QueryUserInfo fallita: %s"),
+						*Result.GetErrorValue().GetLogString()
+					);
+
+					OnEpicLobbyMemberNicknamesReady.Broadcast(false);
+					return;
+				}
+
+				CachedLobbyMemberDisplayNames.Empty();
+
+				for (const FAccountId& AccountId : AccountIds)
+				{
+					FGetUserInfo::Params GetParams;
+
+					GetParams.LocalAccountId = LocalAccountId;
+					GetParams.AccountId = AccountId;
+
+					TOnlineResult<FGetUserInfo> UserInfoResult =
+						OnlineServicesInfoInternal->UserInfoInterface
+							->GetUserInfo(MoveTemp(GetParams));
+
+					if (!UserInfoResult.IsOk())
+					{
+						UE_LOG(
+							LogEosGameInstanceSubsystemDRB,
+							Warning,
+							TEXT("Impossibile ottenere UserInfo per AccountId=%s"),
+							*ToLogString(AccountId)
+						);
+
+						continue;
+					}
+
+					const TSharedRef<FUserInfo>& UserInfo =
+						UserInfoResult.GetOkValue().UserInfo;
+
+					CachedLobbyMemberDisplayNames.Add(
+						ToString(AccountId),
+						UserInfo->DisplayName
+					);
+				}
+
+				OnEpicLobbyMemberNicknamesReady.Broadcast(true);
+			}
+		);
+}
+
+FString UEosGameInstanceSubsystemDRB::GetCachedLobbyMemberDisplayName(
+	FString MemberAccountId
+) const
+{
+	if (const FString* DisplayName =
+		CachedLobbyMemberDisplayNames.Find(MemberAccountId))
+	{
+		return *DisplayName;
+	}
+
+	return FString();
+}
+
+FString UEosGameInstanceSubsystemDRB::GetLobbyMemberAccountIdFromDisplayName(
+	FString DisplayName
+) const
+{
+	for (const TPair<FString, FString>& Pair : CachedLobbyMemberDisplayNames)
+	{
+		if (Pair.Value.Equals(DisplayName, ESearchCase::IgnoreCase))
+		{
+			return Pair.Key;
+		}
+	}
+
+	return FString();
+}
 
 
 ///^^^ DRB - LOBBY ^^^///

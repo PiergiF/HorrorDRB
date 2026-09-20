@@ -47,12 +47,98 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnEpicLobbyLeaveCompleteDelegate, b
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnEpicLobbiesSearchCompleteDelegate, bool, bWasSuccessful);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnEpicLobbyMemberLeftDelegate,	FString, MemberAccountId);
+//DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnEpicLobbyMemberLeftDelegate,	FString, MemberAccountId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnEpicLobbyLeaderChangedDelegate, FString, NewLeaderAccountId);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnEpicLobbyMemberJoinedDelegate, FString, MemberAccountId);
 
+//DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEpicLobbyMemberReadyChangedDelegate, FString, MemberAccountId, bool, bIsReady);
+//DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnEpicLobbyKickedDelegate, bool, bWasKicked);
+//DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnEpicLobbyMatchStartedDelegate, bool, bStarting);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FOnEpicLobbyLeftDelegate,
+	FString,
+	LobbyId
+);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
+	FOnEpicLobbyMemberLeftDelegate,
+	FString,
+	MemberAccountId,
+	FString,
+	LeaveReason
+);
+
+//DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+//	FOnEpicLobbyMemberJoinedDelegate,
+//	FString,
+//	MemberAccountId
+//);
+
+//	FOnEpicLobbyLeaderChangedDelegate,
+//	FString,
+//	NewLeaderAccountId
+//);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
+	FOnEpicLobbyMemberAttributesChangedDelegate,
+	FString,
+	MemberAccountId,
+	FString,
+	AttributeName,
+	FString,
+	AttributeValue
+);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
+	FOnEpicLobbyAttributesChangedDelegate,
+	FString,
+	AttributeName,
+	FString,
+	AttributeValue
+);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FOnEpicLobbyKickCompleteDelegate,
+	bool,
+	bWasSuccessful
+);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FOnEpicLobbyPromoteCompleteDelegate,
+	bool,
+	bWasSuccessful
+);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FOnEpicLobbyMemberNicknamesReadyDelegate,
+	bool,
+	bWasSuccessful
+);
+
 	///^^^ DRB - LOBBY ^^^///
+
+/// --- DRB --- ///
+USTRUCT(BlueprintType)
+struct HORRORDRB5_8_API FDRBLobbyMemberInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "EOS|Lobby")
+	FString AccountId;
+
+	UPROPERTY(BlueprintReadOnly, Category = "EOS|Lobby")
+	FString DisplayName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "EOS|Lobby")
+	bool bIsLeader = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "EOS|Lobby")
+	bool bIsLocalMember = false;
+};
+/// ^^^ DRB ^^^ ///
+
 
 /**
  *
@@ -89,6 +175,53 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "EOS|Events")
 	FOnEpicLobbiesSearchCompleteDelegate OnEpicLobbiesSearchComplete;
+	
+	//UPROPERTY(BlueprintAssignable, Category = "EOS|Events")
+	//FOnEpicLobbyLeaderChangedDelegate OnEpicLobbyLeaderChanged;
+
+	//UPROPERTY(BlueprintAssignable, Category = "EOS|Events")
+	//FOnEpicLobbyMemberLeftDelegate OnEpicLobbyMemberLeft;
+	
+	//UPROPERTY(BlueprintAssignable, Category = "EOS|Events")
+	//FOnEpicLobbyKickedDelegate OnEpicLobbyKicked;
+	
+	//UPROPERTY(BlueprintAssignable, Category = "EOS|Events")
+    //FOnEpicLobbyMemberReadyChangedDelegate OnEpicLobbyMemberReadyChanged;
+
+    //UPROPERTY(BlueprintAssignable, Category = "EOS|Events")
+    //FOnEpicLobbyKickedDelegate OnEpicLobbyKicked;
+
+    //UPROPERTY(BlueprintAssignable, Category = "EOS|Events")
+    //FOnEpicLobbyMatchStartedDelegate OnEpicLobbyMatchStarted;
+	
+	
+	UPROPERTY(BlueprintAssignable, Category = "EOS|Lobby|Events")
+	FOnEpicLobbyLeftDelegate OnEpicLobbyLeft;
+
+	UPROPERTY(BlueprintAssignable, Category = "EOS|Lobby|Events")
+	FOnEpicLobbyMemberLeftDelegate OnEpicLobbyMemberLeft;
+
+	UPROPERTY(BlueprintAssignable, Category = "EOS|Lobby|Events")
+	FOnEpicLobbyMemberJoinedDelegate OnEpicLobbyMemberJoined;
+
+	UPROPERTY(BlueprintAssignable, Category = "EOS|Lobby|Events")
+	FOnEpicLobbyLeaderChangedDelegate OnEpicLobbyLeaderChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "EOS|Lobby|Events")
+	FOnEpicLobbyMemberAttributesChangedDelegate OnEpicLobbyMemberAttributesChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "EOS|Lobby|Events")
+	FOnEpicLobbyAttributesChangedDelegate OnEpicLobbyAttributesChanged;
+	
+	UPROPERTY(BlueprintAssignable, Category = "EOS|Events")
+	FOnEpicLobbyKickCompleteDelegate OnEpicLobbyKickComplete;
+
+	UPROPERTY(BlueprintAssignable, Category = "EOS|Events")
+	FOnEpicLobbyPromoteCompleteDelegate OnEpicLobbyPromoteComplete;
+	
+	UPROPERTY(BlueprintAssignable, Category = "EOS|Lobby|Events")
+	FOnEpicLobbyMemberNicknamesReadyDelegate OnEpicLobbyMemberNicknamesReady;
+	
 
 	// Funzione da chiamare dal bottone "Crea Lobby"
 	UFUNCTION(BlueprintCallable, Category = "EOS|Lobby")
@@ -120,6 +253,82 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "EOS|Lobby")
 	void JoinEpicLobbyByIndex(APlayerController* PlayerController, int32 Index);
 	
+	// Imposta o rimuove lo stato "Pronto" per il giocatore locale
+	//UFUNCTION(BlueprintCallable, Category = "EOS|Lobby")
+	//void SetReadyStatus(APlayerController* PlayerController, bool bIsReady);
+
+	// Il caposquadra espelle un giocatore dalla lobby
+	//UFUNCTION(BlueprintCallable, Category = "EOS|Lobby")
+	//void KickPlayerFromLobby(APlayerController* PlayerController, FString TargetAccountIdStr);
+
+	// Il caposquadra passa la leadership a un altro giocatore
+	//UFUNCTION(BlueprintCallable, Category = "EOS|Lobby")
+	//void PromotePlayerToHost(APlayerController* PlayerController, FString TargetAccountIdStr);
+
+	// Il caposquadra avvia la partita per tutti
+	//UFUNCTION(BlueprintCallable, Category = "EOS|Lobby")
+	//void StartLobbyMatch(APlayerController* PlayerController);
+	
+	
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS|Lobby")
+	bool IsEpicLobbyLeader(
+		APlayerController* PlayerController
+	) const;
+	
+	UFUNCTION(BlueprintCallable, Category = "EOS|Lobby")
+	void KickEpicLobbyMember(
+		APlayerController* PlayerController,
+		FString TargetAccountIdString
+	);
+
+	UFUNCTION(BlueprintCallable, Category = "EOS|Lobby")
+	void PromoteEpicLobbyMember(
+		APlayerController* PlayerController,
+		FString TargetAccountIdString
+	);
+
+	UFUNCTION(BlueprintCallable, Category = "EOS|Lobby")
+	void InviteEpicLobbyMember(
+		APlayerController* PlayerController,
+		FString TargetAccountIdString
+	);
+
+	UFUNCTION(BlueprintCallable, Category = "EOS|Lobby")
+	void SetEpicLobbyReady(
+		APlayerController* PlayerController,
+		bool bReady
+	);
+	
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS|Lobby")
+	bool IsInEpicLobby() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS|Lobby")
+	FString GetActiveLobbyIdString() const;
+	
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS|Lobby")
+	FString GetActiveLobbyName() const;
+
+	//UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS|Lobby")
+	//FString GetActiveLobbyLeaderDisplayName() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS|Lobby")
+	TArray<FDRBLobbyMemberInfo> GetActiveLobbyMembers() const;
+	
+	UFUNCTION(BlueprintCallable, Category = "EOS|Lobby")
+	void QueryActiveLobbyMemberNicknames(
+		APlayerController* PlayerController
+	);
+	
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS|Lobby")
+	FString GetCachedLobbyMemberDisplayName(
+		FString MemberAccountId
+	) const;
+	
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS|Lobby")
+	FString GetLobbyMemberAccountIdFromDisplayName(
+		FString DisplayName
+	) const;
+	
 	///^^^ DRB - LOBBY ^^^///
 
 	////////////////////////////////////////////////////////
@@ -149,6 +358,18 @@ protected:
 	UE::Online::FLobbyId ActiveLobbyId;
 	// Array in cui salveremo i risultati dell'ultima ricerca
 	TArray<TSharedRef<const UE::Online::FLobby>> CurrentSearchResults;
+	
+	bool bHasActiveLobby = false;
+	
+	TSharedPtr<const UE::Online::FLobby> CachedActiveLobby;
+	
+	TMap<FString, FString> CachedLobbyMemberDisplayNames;
+	
+	bool TryGetAccountIdFromString(
+	   const FString& AccountIdString,
+	   UE::Online::FAccountId& OutAccountId
+   ) const;
+	
 	///^^^ DRB - LOBBY ^^^///
 	struct FOnlineServicesInfo
 	{
@@ -177,6 +398,19 @@ protected:
 		// Interfaccia per le Lobbies
 		UE::Online::ILobbiesPtr LobbiesInterface = nullptr;
 		UE::Online::FOnlineEventDelegateHandle LobbyInviteHandle; //per raccogliere gli inviti
+		
+		//UE::Online::FOnlineEventDelegateHandle LobbyUpdateHandle;
+		//UE::Online::FOnlineEventDelegateHandle LobbyMemberUpdateHandle;
+		//UE::Online::FOnlineEventDelegateHandle LobbyLeaderChangeHandle;
+		
+		UE::Online::FOnlineEventDelegateHandle LobbyJoinedHandle;
+		UE::Online::FOnlineEventDelegateHandle LobbyLeftHandle;
+		UE::Online::FOnlineEventDelegateHandle LobbyMemberJoinedHandle;
+		UE::Online::FOnlineEventDelegateHandle LobbyMemberLeftHandle;
+		UE::Online::FOnlineEventDelegateHandle LobbyLeaderChangedHandle;
+		UE::Online::FOnlineEventDelegateHandle LobbyMemberAttributesChangedHandle;
+		UE::Online::FOnlineEventDelegateHandle LobbyAttributesChangedHandle;
+		
 		///^^^ DRB - LOBBY ^^^///
 		///
 		///--- DRB - SESSION ---///
@@ -200,6 +434,11 @@ protected:
 			///--- DRB - LOBBY ---///
 			// Reset dell'interfaccia Per le Lobbies
 			LobbiesInterface.Reset();
+			
+			//LobbyUpdateHandle.Unbind();
+			//LobbyMemberUpdateHandle.Unbind();
+			//LobbyLeaderChangeHandle.Unbind();
+			
 			///^^^ DRB - LOBBY ^^^///
 			///
 			///--- DRB - SESSION ---///
@@ -280,6 +519,9 @@ public:
 	/** Controlla se l'utente risulta loggato ad Epic Games*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS|Auth")
 	bool IsEpicAccountLoggedIn(APlayerController* PlayerController);
+	
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "EOS|Lobby")
+	int32 GetActiveLobbyMemberCount() const;
 
 	//Garbage collector
 	/** Impedisce al Garbage Collector di distruggere gli oggetti non tracciati da UPROPERTY */
@@ -293,6 +535,38 @@ protected:
 	void FinalizeSuccessfulLogin (FPlatformUserId PlatformUserId);
 	
 	void ShowEpicLoginUI(FPlatformUserId PlatformUserId);
+	
+	void BindLobbyEvents();
+
+	void UnbindLobbyEvents();
+	
+	void HandleLobbyJoined(
+		const UE::Online::FLobbyJoined& EventParams
+	);
+
+	void HandleLobbyLeft(
+		const UE::Online::FLobbyLeft& EventParams
+	);
+
+	void HandleLobbyMemberJoined(
+		const UE::Online::FLobbyMemberJoined& EventParams
+	);
+
+	void HandleLobbyMemberLeft(
+		const UE::Online::FLobbyMemberLeft& EventParams
+	);
+
+	void HandleLobbyLeaderChanged(
+		const UE::Online::FLobbyLeaderChanged& EventParams
+	);
+
+	void HandleLobbyMemberAttributesChanged(
+		const UE::Online::FLobbyMemberAttributesChanged& EventParams
+	);
+
+	void HandleLobbyAttributesChanged(
+		const UE::Online::FLobbyAttributesChanged& EventParams
+	);
 	///^^^DRB^^^///
 };
 
