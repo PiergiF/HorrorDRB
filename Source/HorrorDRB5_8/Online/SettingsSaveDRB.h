@@ -14,6 +14,6 @@ class HORRORDRB5_8_API USettingsSaveDRB : public USaveGame
 	
 public:
 	// Memorizza se il giocatore vuole l'autologin
-	UPROPERTY(VisibleAnywhere, Category = "EOS")
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "EOS")
 	bool bAutoLoginEnabled = false;
 };

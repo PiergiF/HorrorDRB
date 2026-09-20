@@ -1597,6 +1597,117 @@ void UEosGameInstanceSubsystemDRB::LeaveEpicLobby(APlayerController* PlayerContr
 }
 
 
+
+void UEosGameInstanceSubsystemDRB::ProvaOverlayLogin(APlayerController* PlayerController, bool bAutoLogin)
+{
+	using namespace UE::Online;
+
+	IOnlineServicesPtr OnlineServices = GetServices();
+
+	if (!OnlineServices.IsValid())
+	{
+		return;
+	}
+
+	IExternalUIPtr ExternalUI = OnlineServices->GetExternalUIInterface();
+
+	if (!ExternalUI.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("ExternalUI non disponibile"));
+		return;
+	}
+
+	FPlatformUserId PlatformUserId = PlayerController->GetLocalPlayer()->GetPlatformUserId();
+	FExternalUIShowLoginUI::Params Params;
+	Params.PlatformUserId = PlatformUserId;
+
+	/*ExternalUI->ShowLoginUI(MoveTemp(Params))
+		.OnComplete(
+			[](const TOnlineResult<FExternalUIShowLoginUI>& Result)
+			{
+				FinalizeSuccessfulLogin(PlatformUserId);
+				UE_LOG(
+					LogTemp,
+					Log,
+					TEXT("ShowLoginUI result: %s"),
+					*Result.GetErrorValue().GetLogString()
+				);
+			}
+		);*/
+	
+	OnlineServicesInfoInternal->ExternalUIInterface->ShowLoginUI(MoveTemp(Params))
+			.OnComplete([this, PlatformUserId](const TOnlineResult<FExternalUIShowLoginUI>& Result)
+			{
+				if (Result.IsOk())
+				{
+					UE_LOG(
+						LogEosGameInstanceSubsystemDRB,
+						Log,
+						TEXT("ShowLoginUI aperta correttamente. Attendo OnLoginStatusChanged.")
+					);
+					// L'Account Portal ha avuto successo
+					FinalizeSuccessfulLogin(PlatformUserId);
+				}
+				else
+				{
+					UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("ShowLoginUI fallita: %s"), *Result.GetErrorValue().GetLogString()); //Errore Login UI:
+					OnEpicLoginComplete.Broadcast(false);
+				}
+			});
+}
+
+void UEosGameInstanceSubsystemDRB::FinalizeSuccessfulLogin(FPlatformUserId PlatformUserId)
+{
+	using namespace UE::Online;
+
+	RegisterLocalOnlineUser(PlatformUserId);
+
+	// Aggancio External UI (Overlay Epic)
+	if (OnlineServicesInfoInternal->ExternalUIInterface.IsValid())
+	{
+		OnlineServicesInfoInternal->ExternalUIEventHandle.Unbind();
+		OnlineServicesInfoInternal->ExternalUIEventHandle =
+			OnlineServicesInfoInternal->ExternalUIInterface->OnExternalUIStatusChanged().Add(
+				[this](const FExternalUIStatusChanged& EventParams)
+				{
+					HandleExternalUIStatusChanged(EventParams);
+				});
+	}
+
+	// Aggancio Inviti Lobby
+	if (OnlineServicesInfoInternal->LobbiesInterface.IsValid())
+	{
+		OnlineServicesInfoInternal->LobbyInviteHandle.Unbind();
+		OnlineServicesInfoInternal->LobbyInviteHandle = OnlineServicesInfoInternal->LobbiesInterface->OnUILobbyJoinRequested().Add(
+			[this](const FUILobbyJoinRequested& InviteData)
+			{
+				UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Richiesta di unione Lobby ricevuta dall'Overlay."));
+				
+				if (!InviteData.Result.IsOk())
+				{
+					//const FOnlineError ErrorResult = InviteData.Result.GetErrorValue();
+
+					UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Errore nella richiesta di unione dalla UI: %s"), *InviteData.Result.GetErrorValue().GetLogString());
+					return;
+				}
+				const TSharedRef<const FLobby> TargetLobby = InviteData.Result.GetOkValue();
+				const FLobbyId LobbyIdToJoin = TargetLobby->LobbyId;
+				if (UWorld* World = GetWorld())
+				{
+					if (APlayerController* PlayerController = GetWorld()->GetFirstPlayerController())
+					{
+						UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Invito accettato. LobbyId: %s"), *ToLogString(LobbyIdToJoin));
+						JoinEpicLobby(LobbyIdToJoin, PlayerController);
+					}
+				}
+			});
+	}
+
+	UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Autenticazione finalizzata con successo. OnlineUser registrato e servizi disponibili."));
+	OnEpicLoginComplete.Broadcast(true);
+}
+
+
 ///^^^ DRB - LOBBY ^^^///
 
 /// <summary>

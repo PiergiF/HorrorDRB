@@ -258,6 +258,9 @@ public:
 	/** Chiamata dal bottone UI per il Login */
 	UFUNCTION(BlueprintCallable, Category = "EOS|Auth")
 	void LoginWithEpic(APlayerController* PlayerController, bool bAutoLogin);
+	
+	UFUNCTION(BlueprintCallable, Category = "EOS|Auth")
+	void ProvaOverlayLogin(APlayerController* PlayerController, bool bAutoLogin);
 
 	/** Chiamata dal bottone UI per il Logout */
 	UFUNCTION(BlueprintCallable, Category = "EOS|Auth")
@@ -283,6 +286,8 @@ protected:
 	/** Callback asincrona chiamata quando il login è completato (o fallito) */
 	void HandleLoginComplete(const UE::Online::TOnlineResult<UE::Online::FAuthLogin>& LoginResult, FPlatformUserId PlatformUserId);
 	void HandleExternalUIStatusChanged(const UE::Online::FExternalUIStatusChanged& EventParams);
+	
+	void FinalizeSuccessfulLogin (FPlatformUserId PlatformUserId);
 	///^^^DRB^^^///
 };
 
