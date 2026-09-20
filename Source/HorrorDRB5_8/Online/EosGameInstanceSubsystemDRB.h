@@ -261,6 +261,9 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "EOS|Auth")
 	void ProvaOverlayLogin(APlayerController* PlayerController, bool bAutoLogin);
+	
+	UFUNCTION(BlueprintCallable, Category = "EOS|Auth")
+	void ProvaLoginWithEpic2(APlayerController* PlayerController, bool bRememberMe);
 
 	/** Chiamata dal bottone UI per il Logout */
 	UFUNCTION(BlueprintCallable, Category = "EOS|Auth")
@@ -288,6 +291,8 @@ protected:
 	void HandleExternalUIStatusChanged(const UE::Online::FExternalUIStatusChanged& EventParams);
 	
 	void FinalizeSuccessfulLogin (FPlatformUserId PlatformUserId);
+	
+	void ShowEpicLoginUI(FPlatformUserId PlatformUserId);
 	///^^^DRB^^^///
 };
 

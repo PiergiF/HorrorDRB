@@ -1708,6 +1708,332 @@ void UEosGameInstanceSubsystemDRB::FinalizeSuccessfulLogin(FPlatformUserId Platf
 }
 
 
+
+void UEosGameInstanceSubsystemDRB::ProvaLoginWithEpic2(
+	APlayerController* PlayerController,
+	bool bRememberMe)
+{
+	using namespace UE::Online;
+
+	if (!PlayerController)
+	{
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Error,
+			TEXT("LoginWithEpic: PlayerController nullo.")
+		);
+		return;
+	}
+
+	ULocalPlayer* LocalPlayer =
+		PlayerController->GetLocalPlayer();
+
+	if (!LocalPlayer)
+	{
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Error,
+			TEXT("LoginWithEpic: LocalPlayer nullo.")
+		);
+		return;
+	}
+
+	if (!OnlineServicesInfoInternal)
+	{
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Error,
+			TEXT("LoginWithEpic: OnlineServicesInfoInternal nullo.")
+		);
+		return;
+	}
+
+	if (!OnlineServicesInfoInternal->AuthInterface.IsValid())
+	{
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Error,
+			TEXT("LoginWithEpic: AuthInterface non disponibile.")
+		);
+		return;
+	}
+
+	const FPlatformUserId PlatformUserId =
+		LocalPlayer->GetPlatformUserId();
+
+	UWorld* World =
+		PlayerController->GetWorld();
+
+	if (!World)
+	{
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Error,
+			TEXT("LoginWithEpic: World nullo.")
+		);
+		return;
+	}
+
+	// ============================================================
+	// PIE
+	// ============================================================
+
+#if WITH_EDITOR
+
+	if (World->WorldType == EWorldType::PIE)
+	{
+		FAuthLogin::Params LoginParams;
+
+		LoginParams.PlatformUserId =
+			PlatformUserId;
+
+		LoginParams.CredentialsType =
+			LoginCredentialsType::Developer;
+
+		LoginParams.CredentialsId =
+			TEXT("localhost:8081");
+
+		LoginParams.CredentialsToken.Set<FString>(
+			TEXT("Piergi_F")
+		);
+
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Log,
+			TEXT("EOS Login: PIE -> Developer Auth Tool")
+		);
+
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Log,
+			TEXT("EOS Login: localhost:8081 / Piergi_F")
+		);
+
+		OnlineServicesInfoInternal->AuthInterface
+			->Login(MoveTemp(LoginParams))
+			.OnComplete(
+				this,
+				&ThisClass::HandleLoginComplete,
+				PlatformUserId
+			);
+
+		return;
+	}
+
+#endif
+
+	// ============================================================
+	// GAME / STANDALONE
+	// ============================================================
+
+	UE_LOG(
+		LogEosGameInstanceSubsystemDRB,
+		Log,
+		TEXT("EOS Login: Standalone/Game")
+	);
+
+	if (bRememberMe)
+	{
+		// --------------------------------------------------------
+		// PRIMO TENTATIVO:
+		// PersistentAuth
+		// --------------------------------------------------------
+
+		FAuthLogin::Params LoginParams;
+
+		LoginParams.PlatformUserId =
+			PlatformUserId;
+
+		LoginParams.CredentialsType =
+			LoginCredentialsType::PersistentAuth;
+
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Log,
+			TEXT("EOS Login: tentativo PersistentAuth (Remember Me)")
+		);
+		
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Log,
+			TEXT("ExternalUI valid = %s"),
+			OnlineServicesInfoInternal->ExternalUIInterface.IsValid()
+				? TEXT("TRUE")
+				: TEXT("FALSE")
+		);
+	
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Log,
+			TEXT("Auth valid = %s"),
+			OnlineServicesInfoInternal->AuthInterface.IsValid()
+				? TEXT("TRUE")
+				: TEXT("FALSE")
+		);
+	
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Log,
+			TEXT("WorldType = %d"),
+			static_cast<int32>(
+				PlayerController->GetWorld()->WorldType
+			)
+		);
+		
+		const bool bAlreadyLoggedIn =
+		OnlineServicesInfoInternal->AuthInterface->IsLoggedIn(
+			PlatformUserId
+		);
+
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Log,
+			TEXT("EOS IsLoggedIn before login = %s"),
+			bAlreadyLoggedIn
+				? TEXT("TRUE")
+				: TEXT("FALSE")
+		);
+
+		OnlineServicesInfoInternal->AuthInterface
+			->Login(MoveTemp(LoginParams))
+			.OnComplete(
+				[this, PlatformUserId](
+					const TOnlineResult<FAuthLogin>& Result)
+				{
+					if (Result.IsOk())
+					{
+						UE_LOG(
+							LogEosGameInstanceSubsystemDRB,
+							Log,
+							TEXT("PersistentAuth riuscito.")
+						);
+
+						FinalizeSuccessfulLogin(
+							PlatformUserId);
+
+						return;
+					}
+
+					UE_LOG(
+						LogEosGameInstanceSubsystemDRB,
+						Warning,
+						TEXT("PersistentAuth non disponibile: %s"),
+						*Result.GetErrorValue().GetLogString()
+					);
+
+					// Nessuna credenziale persistente valida:
+					// passiamo al login interattivo.
+					ShowEpicLoginUI(PlatformUserId);
+				}
+			);
+
+		return;
+	}
+
+	// ------------------------------------------------------------
+	// Remember Me DISATTIVO:
+	// login interattivo immediato
+	// ------------------------------------------------------------
+
+	ShowEpicLoginUI(PlatformUserId);
+}
+
+
+void UEosGameInstanceSubsystemDRB::ShowEpicLoginUI(
+	FPlatformUserId PlatformUserId)
+{
+	using namespace UE::Online;
+
+	if (!OnlineServicesInfoInternal)
+	{
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Error,
+			TEXT("ShowEpicLoginUI: OnlineServicesInfoInternal nullo.")
+		);
+
+		OnEpicLoginComplete.Broadcast(false);
+		return;
+	}
+
+	if (!OnlineServicesInfoInternal->ExternalUIInterface.IsValid())
+	{
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Error,
+			TEXT("ShowEpicLoginUI: ExternalUIInterface non disponibile.")
+		);
+
+		OnEpicLoginComplete.Broadcast(false);
+		return;
+	}
+
+	FExternalUIShowLoginUI::Params Params;
+
+	Params.PlatformUserId =
+		PlatformUserId;
+
+	UE_LOG(
+		LogEosGameInstanceSubsystemDRB,
+		Log,
+		TEXT("EOS Login: apertura Account Portal tramite ExternalUI.")
+	);
+
+	OnlineServicesInfoInternal->ExternalUIInterface
+		->ShowLoginUI(MoveTemp(Params))
+		.OnComplete(
+			[this, PlatformUserId](
+				const TOnlineResult<FExternalUIShowLoginUI>& Result)
+			{
+				if (!Result.IsOk())
+				{
+					UE_LOG(
+						LogEosGameInstanceSubsystemDRB,
+						Error,
+						TEXT("ShowLoginUI fallita: %s"),
+						*Result.GetErrorValue().GetLogString()
+					);
+
+					OnEpicLoginComplete.Broadcast(false);
+
+					return;
+				}
+
+				UE_LOG(
+					LogEosGameInstanceSubsystemDRB,
+					Log,
+					TEXT("ShowLoginUI completata. Verifico stato autenticazione...")
+				);
+
+				// Non assumiamo che "UI chiusa" == "login riuscito".
+				if (!OnlineServicesInfoInternal->AuthInterface->IsLoggedIn(
+						PlatformUserId))
+				{
+					UE_LOG(
+						LogEosGameInstanceSubsystemDRB,
+						Warning,
+						TEXT("ShowLoginUI terminata ma l'utente non risulta autenticato.")
+					);
+
+					OnEpicLoginComplete.Broadcast(false);
+
+					return;
+				}
+
+				UE_LOG(
+					LogEosGameInstanceSubsystemDRB,
+					Log,
+					TEXT("AccountPortal login riuscito.")
+				);
+
+				FinalizeSuccessfulLogin(
+					PlatformUserId);
+			}
+		);
+}
+
+
+
 ///^^^ DRB - LOBBY ^^^///
 
 /// <summary>
