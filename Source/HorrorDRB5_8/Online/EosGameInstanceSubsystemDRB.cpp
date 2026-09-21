@@ -3203,6 +3203,7 @@ UEosGameInstanceSubsystemDRB::GetActiveLobbyMembers() const
 	return Result;
 }
 
+/*
 void UEosGameInstanceSubsystemDRB::QueryActiveLobbyMemberNicknames(
 	APlayerController* PlayerController
 )
@@ -3321,6 +3322,188 @@ void UEosGameInstanceSubsystemDRB::QueryActiveLobbyMemberNicknames(
 						UserInfo->DisplayName
 					);
 				}
+
+				OnEpicLobbyMemberNicknamesReady.Broadcast(true);
+			}
+		);
+}
+*/
+
+void UEosGameInstanceSubsystemDRB::QueryActiveLobbyMemberNicknames(
+	APlayerController* PlayerController
+)
+{
+	using namespace UE::Online;
+
+	if (!PlayerController || !PlayerController->GetLocalPlayer())
+	{
+		OnEpicLobbyMemberNicknamesReady.Broadcast(false);
+		return;
+	}
+
+	if (!bHasActiveLobby || !CachedActiveLobby.IsValid())
+	{
+		OnEpicLobbyMemberNicknamesReady.Broadcast(false);
+		return;
+	}
+
+	if (!OnlineServicesInfoInternal ||
+		!OnlineServicesInfoInternal->UserInfoInterface.IsValid())
+	{
+		OnEpicLobbyMemberNicknamesReady.Broadcast(false);
+		return;
+	}
+
+	// ---------------------------------------------------------
+	// 1. Recuperiamo l'utente locale
+	// ---------------------------------------------------------
+
+	const FPlatformUserId PlatformUserId =
+		PlayerController->GetLocalPlayer()->GetPlatformUserId();
+
+	TObjectPtr<UOnlineUserInfo> LocalUserInfo =
+		GetOnlineUserInfo(PlatformUserId);
+
+	if (!LocalUserInfo)
+	{
+		OnEpicLobbyMemberNicknamesReady.Broadcast(false);
+		return;
+	}
+
+	const FAccountId LocalAccountId =
+		LocalUserInfo->AccountId;
+
+	// ---------------------------------------------------------
+	// 2. Puliamo la cache
+	// ---------------------------------------------------------
+
+	CachedLobbyMemberDisplayNames.Empty();
+
+	// ---------------------------------------------------------
+	// 3. Salviamo subito il DisplayName del giocatore locale
+	// ---------------------------------------------------------
+
+	const FString LocalDisplayName =
+		GetUserDisplayName(PlayerController);
+
+	CachedLobbyMemberDisplayNames.Add(
+		ToString(LocalAccountId),
+		LocalDisplayName
+	);
+
+	// ---------------------------------------------------------
+	// 4. Prepariamo gli AccountId dei membri REMOTI
+	// ---------------------------------------------------------
+
+	TArray<FAccountId> RemoteAccountIds;
+
+	for (const TPair<
+		FAccountId,
+		TSharedRef<const FLobbyMember>>& Pair
+		: CachedActiveLobby->Members)
+	{
+		const FAccountId& MemberAccountId = Pair.Key;
+
+		if (MemberAccountId == LocalAccountId)
+		{
+			continue;
+		}
+
+		RemoteAccountIds.Add(MemberAccountId);
+	}
+
+	// ---------------------------------------------------------
+	// 5. Se non ci sono altri giocatori, abbiamo già finito
+	// ---------------------------------------------------------
+
+	if (RemoteAccountIds.Num() == 0)
+	{
+		UE_LOG(
+			LogEosGameInstanceSubsystemDRB,
+			Log,
+			TEXT("Lobby: nessun membro remoto da interrogare.")
+		);
+
+		OnEpicLobbyMemberNicknamesReady.Broadcast(true);
+		return;
+	}
+
+	// ---------------------------------------------------------
+	// 6. Query degli utenti remoti
+	// ---------------------------------------------------------
+
+	FQueryUserInfo::Params QueryParams;
+
+	QueryParams.LocalAccountId = LocalAccountId;
+	QueryParams.AccountIds = RemoteAccountIds;
+
+	OnlineServicesInfoInternal->UserInfoInterface
+		->QueryUserInfo(MoveTemp(QueryParams))
+		.OnComplete(
+			[this, LocalAccountId, RemoteAccountIds](
+				const TOnlineResult<FQueryUserInfo>& Result
+			)
+			{
+				if (!Result.IsOk())
+				{
+					UE_LOG(
+						LogEosGameInstanceSubsystemDRB,
+						Error,
+						TEXT("QueryUserInfo fallita: %s"),
+						*Result.GetErrorValue().GetLogString()
+					);
+
+					OnEpicLobbyMemberNicknamesReady.Broadcast(false);
+					return;
+				}
+
+				// -------------------------------------------------
+				// 7. Recuperiamo il DisplayName di ogni utente
+				// -------------------------------------------------
+
+				for (const FAccountId& AccountId : RemoteAccountIds)
+				{
+					FGetUserInfo::Params GetParams;
+
+					GetParams.LocalAccountId = LocalAccountId;
+					GetParams.AccountId = AccountId;
+
+					TOnlineResult<FGetUserInfo> UserInfoResult =
+						OnlineServicesInfoInternal->UserInfoInterface
+							->GetUserInfo(MoveTemp(GetParams));
+
+					if (!UserInfoResult.IsOk())
+					{
+						UE_LOG(
+							LogEosGameInstanceSubsystemDRB,
+							Warning,
+							TEXT("Impossibile ottenere UserInfo per AccountId: %s"),
+							*ToString(AccountId)
+						);
+
+						continue;
+					}
+
+					const TSharedRef<FUserInfo>& UserInfo =
+						UserInfoResult.GetOkValue().UserInfo;
+
+					CachedLobbyMemberDisplayNames.Add(
+						ToString(AccountId),
+						UserInfo->DisplayName
+					);
+
+					UE_LOG(
+						LogEosGameInstanceSubsystemDRB,
+						Log,
+						TEXT("Nickname recuperato: %s -> %s"),
+						*ToString(AccountId),
+						*UserInfo->DisplayName
+					);
+				}
+
+				// -------------------------------------------------
+				// 8. Avvisiamo il Blueprint
+				// -------------------------------------------------
 
 				OnEpicLobbyMemberNicknamesReady.Broadcast(true);
 			}
