@@ -8,11 +8,6 @@
 #include "Online/Auth.h"
 #include "Online/TitleFile.h"
 
-// --- DRB LOBBY OSSv1 ---//
-//#include "OnlineSubsystem.h"
-//#include "Interfaces/OnlineIdentityInterface.h"
-// ^^^ DRB LOBBY OSSv1 ^^^//
-
 DEFINE_LOG_CATEGORY(LogEosGameInstanceSubsystemDRB);
 
 /// <summary>
@@ -363,177 +358,6 @@ TObjectPtr<UOnlineUserInfo> UEosGameInstanceSubsystemDRB::GetOnlineUserInfo(FPla
 }
 
 ///--- DRB - ACCOUNT ---///
-///
-/// <summary>
-/// Configura i parametri di login e chiama l'interfaccia Auth per autenticare l'utente
-/// </summary>
-/*
-void UEosGameInstanceSubsystemDRB::LoginEpicAccount(FPlatformUserId PlatformUserId)
-{
-	using namespace UE::Online;
-
-	// Verifica che l'interfaccia Auth sia valida
-	if (!OnlineServicesInfoInternal->AuthInterface.IsValid())
-	{
-		UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Errore: Interfaccia Auth non valida per il Login."));
-		return;
-	}
-
-	// Prepara i parametri per il login
-	FAuthLogin::Params LoginParams;
-	LoginParams.PlatformUserId = PlatformUserId;
-
-	// Utilizza l'Account Portal per aprire il browser (o l'overlay) e far inserire email/password all'utente.
-	// Se stai testando in locale con il DevAuthTool, puoi cambiare questo valore in LoginCredentialsType::Developer
-	LoginParams.CredentialsType = LoginCredentialsType::AccountPortal;
-
-	UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Inizio login per PlatformUserId: %d..."), PlatformUserId.GetInternalId());
-
-	// Esegue il login asincrono
-	OnlineServicesInfoInternal->AuthInterface->Login(MoveTemp(LoginParams))
-		.OnComplete(this, &ThisClass::HandleLoginComplete, PlatformUserId);
-}
-*/
-
-/* pre gpt
-/// <summary>
-/// Gestisce il risultato dell'operazione di Login
-/// </summary>
-void UEosGameInstanceSubsystemDRB::HandleLoginComplete(const UE::Online::TOnlineResult<UE::Online::FAuthLogin>& LoginResult, FPlatformUserId PlatformUserId)
-{
-	using namespace UE::Online;
-
-	/* PRIMA DI IMPLEMENTARE ANCHE OSSv1
-	if (LoginResult.IsOk())
-	{
-		const FAuthLogin::Result& ResultValue = LoginResult.GetOkValue();
-
-		UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Login EOS completato con successo! Account ID: %s"),
-			*ToLogString(ResultValue.AccountInfo->AccountId));
-
-		// Dopo che il login ha avuto successo, possiamo registrare l'utente nel nostro sistema locale
-		RegisterLocalOnlineUser(PlatformUserId);
-
-		// Delegato: Il login ha avuto successo (True)
-		OnEpicLoginComplete.Broadcast(true);
-	*/
-	/*
-
-	if (LoginResult.IsOk())
-	{
-		const FAuthLogin::Result& ResultValue = LoginResult.GetOkValue();
-		UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Login EOS (V2) completato con successo! Account ID: %s"), *ToLogString(ResultValue.AccountInfo->AccountId));
-
-		// Dopo che il login ha avuto successo, possiamo registrare l'utente nel nostro sistema locale
-		RegisterLocalOnlineUser(PlatformUserId);
-
-		// --- SINCRONIZZAZIONE FRAMEWORK V1 PER IL NETDRIVER ---
-		if (IOnlineSubsystem* OSSv1 = IOnlineSubsystem::Get())
-		{
-			if (IOnlineIdentityPtr IdentityV1 = OSSv1->GetIdentityInterface())
-			{
-				// Agganciamo un delegato temporaneo per sapere quando la sincronizzazione in V1 è completa
-				IdentityV1->AddOnLoginCompleteDelegate_Handle(0, FOnLoginCompleteDelegate::CreateLambda(
-					[this](int32 LocalUserNum, bool bWasSuccessful, const FUniqueNetId& UserId, const FString& Error)
-					{
-						if (bWasSuccessful)
-						{
-							UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Sincronizzazione V1 completata. Il NetDriver EOS puo' ora aprire i socket."));
-							// Delegato: Il login ha avuto successo (True)
-							OnEpicLoginComplete.Broadcast(true);
-						}
-						else
-						{
-							UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Errore sincronizzazione V1: %s"), *Error);
-							OnEpicLoginComplete.Broadcast(false);
-						}
-					}));
-
-				// Parametri di accesso per accedere silenziosamente sfruttando il token EOS appena ottenuto in V2
-				FOnlineAccountCredentials Credentials;
-				Credentials.Type = TEXT("persistentauth");
-
-				IdentityV1->Login(0, Credentials);
-			}
-		}
-		else
-		{
-			// Fallback se il framework V1 è disabilitato
-			OnEpicLoginComplete.Broadcast(true);
-		}
-
-		// AGGANCIAMO L'OVERLAY SOLO ORA CHE SIAMO LOGGATI
-		if (OnlineServicesInfoInternal->ExternalUIInterface.IsValid())
-		{
-			// Salviamo l'handle dell'overlay per usarlo al logout
-			OnlineServicesInfoInternal->ExternalUIEventHandle = OnlineServicesInfoInternal->ExternalUIInterface->OnExternalUIStatusChanged().Add(
-				[this](const UE::Online::FExternalUIStatusChanged& EventParams)
-				{
-					HandleExternalUIStatusChanged(EventParams);
-				});
-			//
-			//OnlineServicesInfoInternal->LobbyInviteHandle = OnlineServicesInfoInternal->LobbiesInterface->OnUILobbyJoinRequested().Add(
-			//	[this](const UE::Online::FUILobbyJoinRequested& InviteData)
-			//	{
-			//		//UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Invito ricevuto per Lobby ID: %s"), *UE::Online::ToLogString(InviteData.LobbyId));
-			//		UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Richiesta di unione tramite Overlay ricevuta con successo!"));
-			//		// Qui chiameremo la funzione JoinLobby()
-			//	});
-			//
-			// AGGANCIO PER L'ACCETTAZIONE DEGLI INVITI (Sintassi OSSv2)
-			if (OnlineServicesInfoInternal->LobbiesInterface.IsValid())
-			{
-				OnlineServicesInfoInternal->LobbyInviteHandle = OnlineServicesInfoInternal->LobbiesInterface->OnUILobbyJoinRequested().Add(
-					[this](const UE::Online::FUILobbyJoinRequested& InviteData)
-					{
-						//UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Richiesta di unione tramite Overlay per la Lobby: %s"), *UE::Online::ToLogString(InviteData.LobbyId)); //LobbyId
-						//UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Richiesta di unione tramite Overlay ricevuta con successo!"));
-						//UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Overlay: Invito accettato, avvio unione..."));
-						// Qui chiameremo la futura funzione: JoinEpicLobby(InviteData.LobbyId);
-
-						UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Overlay: Invito accettato, estrazione dati in corso..."));
-
-						// 1. Verifichiamo che la richiesta dall'Overlay sia valida e non contenga errori
-						if (InviteData.Result.IsOk())
-						{
-							// 2. Estraiamo l'oggetto Lobby completo
-							TSharedRef<const UE::Online::FLobby> TargetLobby = InviteData.Result.GetOkValue();
-
-							// 3. Da questo oggetto, leggiamo il LobbyId
-							UE::Online::FLobbyId IdToJoin = TargetLobby->LobbyId;
-
-							UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("ID della Lobby estratto: %s. Avvio connessione..."), *UE::Online::ToLogString(IdToJoin));
-
-							// 4. Chiamiamo la tua funzione nativa passando l'ID esatto!
-							JoinEpicLobby(IdToJoin);
-						}
-						else
-						{
-							// Se l'invito era scaduto o corrotto, Epic ci manda un errore
-							UE::Online::FOnlineError ErrorResult = InviteData.Result.GetErrorValue();
-							UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Errore nella richiesta di unione da UI: %s"), *ErrorResult.GetLogString());
-						}
-					});
-			}
-		}
-
-		//prova di debug
-		//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Orange, TEXT("PlatformUserId Login: %s"),PlatformUserId);
-		UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("PlatformUserId Login: %s"),
-			*ToLogString(PlatformUserId));
-		UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("PlatformUserId.InternalId Login: %d"), PlatformUserId.GetInternalId());
-	}
-	else
-	{
-		UE::Online::FOnlineError ErrorResult = LoginResult.GetErrorValue();
-		UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Errore durante il Login EOS: %s"), *ErrorResult.GetLogString());
-
-		// Delegato: Il login è fallito (False)
-		OnEpicLoginComplete.Broadcast(false);
-	}
-}
-*/
-
 
 void UEosGameInstanceSubsystemDRB::HandleLoginComplete(const UE::Online::TOnlineResult<UE::Online::FAuthLogin>& LoginResult, FPlatformUserId PlatformUserId)
 {
@@ -543,23 +367,12 @@ void UEosGameInstanceSubsystemDRB::HandleLoginComplete(const UE::Online::TOnline
 	{
 		const FAuthLogin::Result& ResultValue = LoginResult.GetOkValue();
 
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Log,
-			TEXT("Login EOS (OSSv2) completato con successo! Account ID: %s"),
-			*ToLogString(ResultValue.AccountInfo->AccountId)
-		);
-
-		// Registriamo l'utente nel nostro registro locale.
+		UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Login EOS (OSSv2) completato con successo! Account ID: %s"), *ToLogString(ResultValue.AccountInfo->AccountId));
+		
 		RegisterLocalOnlineUser(PlatformUserId);
-
-		// Da questo momento in poi NON dipendiamo più da OSSv1.
-		// Il login OSSv2 è sufficiente per il nostro layer online.
+		
 		OnEpicLoginComplete.Broadcast(true);
-
-		// ============================================================
-		// EPIC OVERLAY / INVITI
-		// ============================================================
+		
 
 		if (OnlineServicesInfoInternal->ExternalUIInterface.IsValid())
 		{
@@ -569,18 +382,12 @@ void UEosGameInstanceSubsystemDRB::HandleLoginComplete(const UE::Online::TOnline
 			OnlineServicesInfoInternal->ExternalUIEventHandle.Unbind();
 			//}
 
-			OnlineServicesInfoInternal->ExternalUIEventHandle =
-				OnlineServicesInfoInternal->ExternalUIInterface->OnExternalUIStatusChanged().Add(
-					[this](const FExternalUIStatusChanged& EventParams)
-					{
+			OnlineServicesInfoInternal->ExternalUIEventHandle = OnlineServicesInfoInternal->ExternalUIInterface->OnExternalUIStatusChanged().Add([this](const FExternalUIStatusChanged& EventParams)
+				{
 						HandleExternalUIStatusChanged(EventParams);
-					}
-				);
+				});
 		}
-
-		// ============================================================
-		// INVITI ALLA LOBBY
-		// ============================================================
+		
 
 		if (OnlineServicesInfoInternal->LobbiesInterface.IsValid())
 		{
@@ -593,24 +400,12 @@ void UEosGameInstanceSubsystemDRB::HandleLoginComplete(const UE::Online::TOnline
 			OnlineServicesInfoInternal->LobbyInviteHandle = OnlineServicesInfoInternal->LobbiesInterface->OnUILobbyJoinRequested().Add(
 				[this](const FUILobbyJoinRequested& InviteData)
 				{
-					UE_LOG(
-						LogEosGameInstanceSubsystemDRB,
-						Log,
-						TEXT("Richiesta di unione Lobby ricevuta dall'Overlay.")
-					);
+					UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Richiesta di unione Lobby ricevuta dall'Overlay."));
 
 					if (!InviteData.Result.IsOk())
 					{
-						const FOnlineError ErrorResult =
-							InviteData.Result.GetErrorValue();
-
-						UE_LOG(
-							LogEosGameInstanceSubsystemDRB,
-							Error,
-							TEXT("Errore nella richiesta di unione dalla UI: %s"),
-							*ErrorResult.GetLogString()
-						);
-
+						const FOnlineError ErrorResult = InviteData.Result.GetErrorValue();
+						UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Errore nella richiesta di unione dalla UI: %s"), *ErrorResult.GetLogString());
 						return;
 					}
 
@@ -625,57 +420,32 @@ void UEosGameInstanceSubsystemDRB::HandleLoginComplete(const UE::Online::TOnline
 
 					if (!World)
 					{
-						UE_LOG(
-							LogEosGameInstanceSubsystemDRB,
-							Error,
-							TEXT("Overlay Invite: World non disponibile.")
-						);
-
+						UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Overlay Invite: World non disponibile."));
 						return;
 					}
 
-					APlayerController* PlayerController =
-						World->GetFirstPlayerController();
+					APlayerController* PlayerController = World->GetFirstPlayerController();
 
 					if (!PlayerController)
 					{
-						UE_LOG(
-							LogEosGameInstanceSubsystemDRB,
-							Error,
-							TEXT("Overlay Invite: PlayerController non disponibile.")
-						);
-
+						UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Overlay Invite: PlayerController non disponibile."));
 						return;
 					}
 
-					UE_LOG(
-						LogEosGameInstanceSubsystemDRB,
-						Log,
-						TEXT("Invito accettato. LobbyId: %s"),
-						*ToLogString(LobbyIdToJoin)
-					);
+					UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Invito accettato. LobbyId: %s"), *ToLogString(LobbyIdToJoin));
 
 					JoinEpicLobby(LobbyIdToJoin, PlayerController);
 				}
 			);
 		}
 
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Log,
-			TEXT("Autenticazione OSSv2 pronta. OnlineUser registrato e servizi disponibili.")
-		);
+		UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Autenticazione OSSv2 pronta. OnlineUser registrato e servizi disponibili."));
 	}
 	else
 	{
 		const FOnlineError ErrorResult = LoginResult.GetErrorValue();
 
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Error,
-			TEXT("Errore durante il Login EOS: %s"),
-			*ErrorResult.GetLogString()
-		);
+		UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Errore durante il Login EOS: %s"), *ErrorResult.GetLogString());
 
 		OnEpicLoginComplete.Broadcast(false);
 	}
@@ -694,39 +464,6 @@ void UEosGameInstanceSubsystemDRB::LoginWithEpic(APlayerController* PlayerContro
 
 	FAuthLogin::Params LoginParams;
 	LoginParams.PlatformUserId = PlatformUserId;
-
-	/*
-	// --------- INIZIO MACRO EDITOR ---------
-#if UE_EDITOR
-	// Se siamo nell'Editor, usa il DevAuthTool per un login istantaneo e senza browser
-	LoginParams.CredentialsType = bAutoLogin ? LoginCredentialsType::PersistentAuth : LoginCredentialsType::Developer;
-	// Il tool di Epic di default gira su localhost alla porta 8081
-	LoginParams.CredentialsId = TEXT("localhost:8081"); // CredentialsId è solitamente una semplice stringa per indicare la porta locale
-	// Questo è il nome fittizio che sceglierai dentro il DevAuthTool
-	LoginParams.CredentialsToken.Set<FString>(FString(TEXT("Piergi_F"))); // CredentialsToken è un TVariant. Usiamo .Set<FString>() per l'assegnazione sicura
-#else // Se il gioco è pacchettizzato o in Standalone, usa il portale web vero e proprio
-	// Se bAutoLogin è true, tenta di usare il token salvato in locale.
-	// Altrimenti apre il portale Epic nel browser/overlay.
-	LoginParams.CredentialsType = bAutoLogin ? LoginCredentialsType::PersistentAuth : LoginCredentialsType::AccountPortal;
-#endif
-	// --------- FINE MACRO EDITOR ---------
-	*/
-
-	/*
-	// Rimuoviamo le macro #if UE_EDITOR e controlliamo a runtime il tipo di simulazione
-	if (PlayerController->GetWorld()->IsPlayInEditor())
-	{
-		// 1. Play In Editor (PIE): Usiamo il DevAuthTool per la massima velocità
-		LoginParams.CredentialsType = bAutoLogin ? LoginCredentialsType::PersistentAuth : LoginCredentialsType::Developer;
-		LoginParams.CredentialsId = TEXT("localhost:8081");
-		LoginParams.CredentialsToken.Set<FString>(FString(TEXT("Piergi_F")));
-	}
-	else
-	{
-		// 2. Standalone o Gioco Pacchettizzato: Usiamo l'Account Portal
-		LoginParams.CredentialsType = bAutoLogin ? LoginCredentialsType::PersistentAuth : LoginCredentialsType::AccountPortal;
-	}
-	*/
 
 
 	//---- UNIONE MACRO E VERIFICA IN EDITOR E STADALONE COSI' DA TESTARE SIA AUTH DEVELOPER CHE ACCOUNTPORTAL  --- DA RIMETTERE ALLA FINE ----
@@ -765,9 +502,7 @@ void UEosGameInstanceSubsystemDRB::LogoutEpicAccount(APlayerController* PlayerCo
 	if (!PlayerController || !PlayerController->GetLocalPlayer()) return;
 
 	FPlatformUserId PlatformUserId = PlayerController->GetLocalPlayer()->GetPlatformUserId();
-
-	//prova debug
-	//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Orange, TEXT("PlatformUserId inizio Logout: %s"),PlatformUserId);
+	
 	UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("PlatformUserId.internalId inizio Logout: %d"), PlatformUserId.GetInternalId());
 
 	using namespace UE::Online;
@@ -782,8 +517,7 @@ void UEosGameInstanceSubsystemDRB::LogoutEpicAccount(APlayerController* PlayerCo
 
 	FAuthLogout::Params LogoutParams;
 	LogoutParams.LocalAccountId = UserInfo->AccountId;
-
-	//prova debug
+	
 	UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("AccountId Logout: %s"), *ToLogString(LogoutParams.LocalAccountId));
 	UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("LogoutParams Logout: %s"), *ToLogString(LogoutParams));
 
@@ -797,7 +531,7 @@ void UEosGameInstanceSubsystemDRB::LogoutEpicAccount(APlayerController* PlayerCo
 					// Rimuovi l'utente dalla nostra mappa locale
 					OnlineUserInfos.Remove(PlatformUserId);
 
-					// SGANCIAMO L'OVERLAY
+					// sgancio overlay
 					if (OnlineServicesInfoInternal->ExternalUIInterface.IsValid())
 					{
 						// Nel framework V2, chiamiamo semplicemente Unbind() direttamente sull'Handle!
@@ -979,15 +713,11 @@ void UEosGameInstanceSubsystemDRB::CreateEpicLobby(APlayerController* PlayerCont
 					
 					CachedActiveLobby = ResultValue.Lobby;
 					
-					// ID della lobby appena creata
 					ActiveLobbyId = ResultValue.Lobby->LobbyId;
-					//UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Lobby creata con successo! Lobby ID: %s"), *ToLogString(ResultValue.Lobby->LobbyId));
 					UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Lobby creata con successo! Lobby ID: %s; Membri=%d; Leader=%s"), *ToLogString(ActiveLobbyId), CachedActiveLobby->Members.Num(), *ToLogString(CachedActiveLobby->OwnerAccountId));
-
 					
-					// Indichiamo al subsystem che ora abbiamo una Lobby attiva
 					bHasActiveLobby = true;
-					// Avvisiamo la UI che tutto è andato bene
+					//Update bind
 					OnEpicLobbyCreateComplete.Broadcast(true);
 					OnEpicLobbyJoinComplete.Broadcast(true);
 				}
@@ -1030,7 +760,6 @@ void UEosGameInstanceSubsystemDRB::DestroyEpicLobby(APlayerController* PlayerCon
 				{
 					UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Lobby chiusa/abbandonata con successo."));
 					// Reset dell'ID memorizzato
-					//ActiveLobbyId = UE::Online::FLobbyId();
 					ActiveLobbyId = FLobbyId();
 					OnEpicLobbyDestroyComplete.Broadcast(true);
 				}
@@ -1042,138 +771,13 @@ void UEosGameInstanceSubsystemDRB::DestroyEpicLobby(APlayerController* PlayerCon
 			});
 }
 
-
-/* pre gpt
-void UEosGameInstanceSubsystemDRB::JoinEpicLobby(UE::Online::FLobbyId LobbyToJoin)
-{
-	using namespace UE::Online;
-
-	// Assicuriamoci di avere un controller valido (essendo nel Subsystem, usiamo il primo giocatore locale)
-	APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
-	if (!PlayerController || !PlayerController->GetLocalPlayer()) return;
-
-	FPlatformUserId PlatformUserId = PlayerController->GetLocalPlayer()->GetPlatformUserId();
-
-	if (!OnlineServicesInfoInternal->LobbiesInterface.IsValid()) return;
-
-	TObjectPtr<UOnlineUserInfo> UserInfo = GetOnlineUserInfo(PlatformUserId);
-	if (!UserInfo) return;
-
-	// Parametri di unione
-	FJoinLobby::Params JoinParams;
-	JoinParams.LocalAccountId = UserInfo->AccountId;
-	JoinParams.LobbyId = LobbyToJoin;
-
-	// Anche chi si unisce attiva il proprio Presence nella stanza
-	JoinParams.bPresenceEnabled = true;
-
-	UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Richiesta di unione alla Lobby in corso..."));
-
-	OnlineServicesInfoInternal->LobbiesInterface->JoinLobby(MoveTemp(JoinParams))
-		.OnComplete([this, PlayerController](const TOnlineResult<FJoinLobby>& Result)
-		{
-			if (Result.IsOk())
-			{
-				const FJoinLobby::Result& ResultValue = Result.GetOkValue();
-
-				// Salviamo l'ID della lobby attiva così potremo uscirne in futuro
-				ActiveLobbyId = ResultValue.Lobby->LobbyId;
-
-				UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Unito con successo alla Lobby Cloud: %s"), *ToLogString(ActiveLobbyId));
-
-				// FASE 2: TELETRASPORTO P2P (Da implementare a breve)
-				// FString HostAddress = ...
-				// PlayerController->ClientTravel(HostAddress, TRAVEL_Absolute);
-
-
-
-				// --- FASE 2: ESTRAZIONE DATI E TELETRASPORTO P2P VIA EOS ---
-
-				// 1. Otteniamo l'ID dell'host sotto forma di stringa diagnostica
-				FAccountId HostId = ResultValue.Lobby->OwnerAccountId;
-				FString FullLogStr = ToLogString(HostId);
-				FString EosIdStr;
-
-				// 2. Parsing per isolare il Product User ID (EOS=[...])
-				int32 StartIdx = FullLogStr.Find(TEXT("EOS=["));
-				if (StartIdx != INDEX_NONE)
-				{
-					StartIdx += 5; // Saltiamo la stringa "EOS=[" (5 caratteri)
-					int32 EndIdx = FullLogStr.Find(TEXT("]"), ESearchCase::IgnoreCase, ESearchDir::FromStart, StartIdx);
-
-					if (EndIdx != INDEX_NONE)
-					{
-						// Estraiamo esattamente i 32 caratteri alfanumerici
-						EosIdStr = FullLogStr.Mid(StartIdx, EndIdx - StartIdx);
-					}
-				}
-
-				// Se l'estrazione fallisce per qualche motivo, mettiamo un log di emergenza
-				if (EosIdStr.IsEmpty())
-				{
-					UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Impossibile estrarre l'EOS ID dalla stringa: %s"), *FullLogStr);
-					OnEpicLobbyJoinComplete.Broadcast(false);
-					return;
-				}
-
-				// 3. Costruiamo l'indirizzo formattato per il SocketSubsystemEOS
-				//FString ConnectString = FString::Printf(TEXT("eos:%s"), *EosIdStr);
-				//FString ConnectString = FString::Printf(TEXT("%s.eos"), *EosIdStr);
-				//FString ConnectString = FString::Printf(TEXT("eos://%s"), *EosIdStr);
-				//FString ConnectString = FString::Printf(TEXT("%s:7777"), *EosIdStr);
-				FString ConnectString = FString::Printf(TEXT("eos://%s/"), *EosIdStr);
-
-				UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Avvio teletrasporto P2P verso l'Host: %s"), *ConnectString);
-
-				// 4. Viaggio verso il Listen Server
-				PlayerController->ClientTravel(ConnectString, TRAVEL_Absolute);
-
-
-
-
-				OnEpicLobbyJoinComplete.Broadcast(true);
-			}
-			else
-			{
-				UE::Online::FOnlineError ErrorResult = Result.GetErrorValue();
-				UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Errore durante l'unione: %s"), *ErrorResult.GetLogString());
-				OnEpicLobbyJoinComplete.Broadcast(false);
-			}
-		});
-}
-*/
-
 void UEosGameInstanceSubsystemDRB::JoinEpicLobby(UE::Online::FLobbyId LobbyToJoin, APlayerController* PlayerController)
 {
 	using namespace UE::Online;
 
-	/*
-	APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
-
 	if (!PlayerController || !PlayerController->GetLocalPlayer())
 	{
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Error,
-			TEXT("JoinEpicLobby: PlayerController non valido.")
-		);
-
-		OnEpicLobbyJoinComplete.Broadcast(false);
-		return;
-	}
-	*/
-
-	// ============================================================
-	// VALIDAZIONE
-	// ============================================================
-
-	if (!PlayerController || !PlayerController->GetLocalPlayer())
-	{
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Error,
-			TEXT("JoinEpicLobby: PlayerController non valido.")
-		);
+		UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("JoinEpicLobby: PlayerController non valido."));
 
 		OnEpicLobbyJoinComplete.Broadcast(false);
 		return;
@@ -1183,19 +787,11 @@ void UEosGameInstanceSubsystemDRB::JoinEpicLobby(UE::Online::FLobbyId LobbyToJoi
 		!OnlineServicesInfoInternal->OnlineServices.IsValid() ||
 		!OnlineServicesInfoInternal->LobbiesInterface.IsValid())
 	{
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Error,
-			TEXT("JoinEpicLobby: Online Services o Lobby Interface non validi.")
-		);
+		UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("JoinEpicLobby: Online Services o Lobby Interface non validi."));
 
 		OnEpicLobbyJoinComplete.Broadcast(false);
 		return;
 	}
-
-	// ============================================================
-	// OTTENIAMO L'UTENTE LOCALE
-	// ============================================================
 
 	const FPlatformUserId PlatformUserId = PlayerController->GetLocalPlayer()->GetPlatformUserId();
 
@@ -1213,75 +809,39 @@ void UEosGameInstanceSubsystemDRB::JoinEpicLobby(UE::Online::FLobbyId LobbyToJoi
 		return;
 	}
 
-	// ============================================================
-	// JOIN DELLA LOBBY
-	// ============================================================
-
 	FJoinLobby::Params JoinParams;
 	JoinParams.LocalAccountId = UserInfo->AccountId;
 	JoinParams.LobbyId = LobbyToJoin;
 	JoinParams.bPresenceEnabled = true;
 
-	UE_LOG(
-		LogEosGameInstanceSubsystemDRB,
-		Log,
-		TEXT("Join Lobby in corso: %s"),
-		*ToLogString(LobbyToJoin)
-	);
+	UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Join Lobby in corso: %s"), *ToLogString(LobbyToJoin));
 
-	OnlineServicesInfoInternal->LobbiesInterface
-		->JoinLobby(MoveTemp(JoinParams))
-		.OnComplete(
-			[this, PlayerController, LocalAccountId = UserInfo->AccountId]
-			(const TOnlineResult<FJoinLobby>& Result)
+	OnlineServicesInfoInternal->LobbiesInterface->JoinLobby(MoveTemp(JoinParams))
+		.OnComplete([this, PlayerController, LocalAccountId = UserInfo->AccountId](const TOnlineResult<FJoinLobby>& Result)
 			{
 				using namespace UE::Online;
 
-				// ====================================================
-				// VERIFICA JOIN LOBBY
-				// ====================================================
-
 				if (!Result.IsOk())
 				{
-					UE_LOG(
-						LogEosGameInstanceSubsystemDRB,
-						Error,
-						TEXT("JoinLobby fallita: %s"),
-						*Result.GetErrorValue().GetLogString()
-					);
+					UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("JoinLobby fallita: %s"), *Result.GetErrorValue().GetLogString());
 
 					OnEpicLobbyJoinComplete.Broadcast(false);
 					return;
 				}
 
-				const FJoinLobby::Result& ResultValue =
-					Result.GetOkValue();
+				const FJoinLobby::Result& ResultValue = Result.GetOkValue();
 
 				if (!ResultValue.Lobby.IsValid())
 				{
-					UE_LOG(
-						LogEosGameInstanceSubsystemDRB,
-						Error,
-						TEXT("JoinLobby riuscita ma FLobby non è valido.")
-					);
+					UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("JoinLobby riuscita ma FLobby non è valido."));
 
 					OnEpicLobbyJoinComplete.Broadcast(false);
 					return;
 				}
+				
+				ActiveLobbyId = ResultValue.Lobby->LobbyId; // Salviamo la Lobby locale.
 
-				// Salviamo la Lobby locale.
-				ActiveLobbyId = ResultValue.Lobby->LobbyId;
-
-				UE_LOG(
-					LogEosGameInstanceSubsystemDRB,
-					Log,
-					TEXT("Lobby joinata con successo: %s"),
-					*ToLogString(ActiveLobbyId)
-				);
-
-				// =========================================================
-				// RISOLUZIONE DELLA DESTINAZIONE P2P TRAMITE OSSv2
-				// =========================================================
+				UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Lobby joinata con successo: %s"), *ToLogString(ActiveLobbyId));
 
 				FGetResolvedConnectString::Params ConnectParams;
 				ConnectParams.LocalAccountId = LocalAccountId;
@@ -1292,145 +852,48 @@ void UEosGameInstanceSubsystemDRB::JoinEpicLobby(UE::Online::FLobbyId LobbyToJoi
 
 				if (!OnlineServices.IsValid())
 				{
-					UE_LOG(
-						LogEosGameInstanceSubsystemDRB,
-						Error,
-						TEXT("Online Services non disponibile.")
-					);
+					UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Online Services non disponibile."));
 
 					OnEpicLobbyJoinComplete.Broadcast(false);
 					return;
 				}
 
-				UE_LOG(
-					LogEosGameInstanceSubsystemDRB,
-					Log,
-					TEXT("Richiesta GetResolvedConnectString per Lobby...")
-				);
+				UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Richiesta GetResolvedConnectString per Lobby..."));
 
-				TOnlineResult<FGetResolvedConnectString> ConnectResult =
-					OnlineServicesInfoInternal->OnlineServices
-					->GetResolvedConnectString(MoveTemp(ConnectParams));
+				TOnlineResult<FGetResolvedConnectString> ConnectResult = OnlineServicesInfoInternal->OnlineServices->GetResolvedConnectString(MoveTemp(ConnectParams));
 
 				if (!ConnectResult.IsOk())
 				{
-					UE_LOG(
-						LogEosGameInstanceSubsystemDRB,
-						Error,
-						TEXT("GetResolvedConnectString fallita: %s"),
-						*ConnectResult.GetErrorValue().GetLogString()
-					);
+					UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("GetResolvedConnectString fallita: %s"), *ConnectResult.GetErrorValue().GetLogString());
 
 					OnEpicLobbyJoinComplete.Broadcast(false);
 					return;
 				}
 
-				// ====================================================
-				// OTTENIAMO L'URL P2P GENERATO DAL FRAMEWORK
-				// ====================================================
+				const FString ConnectString = ConnectResult.GetOkValue().ResolvedConnectString;
 
-				const FString ConnectString =
-					ConnectResult.GetOkValue().ResolvedConnectString;
-
-				UE_LOG(
-					LogEosGameInstanceSubsystemDRB,
-					Warning,
-					TEXT("EOS Resolved Connect String = %s"),
-					*ConnectString
-				);
+				UE_LOG(LogEosGameInstanceSubsystemDRB, Warning, TEXT("EOS Resolved Connect String = %s"), *ConnectString);
 
 				if (ConnectString.IsEmpty())
 				{
-					UE_LOG(
-						LogEosGameInstanceSubsystemDRB,
-						Error,
-						TEXT("Resolved Connect String vuota.")
-					);
+					UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("Resolved Connect String vuota."));
 
 					OnEpicLobbyJoinComplete.Broadcast(false);
 					return;
 				}
 
-				// ====================================================
-				// CLIENT TRAVEL
-				// ====================================================
 
+				UE_LOG(LogEosGameInstanceSubsystemDRB, Warning, TEXT("NetMode prima del ClientTravel: %d"), (int32)GetWorld()->GetNetMode());
+				UE_LOG(LogEosGameInstanceSubsystemDRB, Warning, TEXT("World URL prima del ClientTravel: %s"),*GetWorld()->URL.ToString());
+				UE_LOG(LogEosGameInstanceSubsystemDRB, Warning, TEXT("ClientTravel URL = %s"), *ConnectString);
+				UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("ClientTravel verso EOS P2P..."));
 
-				UE_LOG(
-					LogEosGameInstanceSubsystemDRB,
-					Warning,
-					//TEXT("NetMode prima del ClientTravel: %s"),
-					//*UEnum::GetValueAsString(GetWorld()->GetNetMode())
-					TEXT("NetMode prima del ClientTravel: %d"),
-					(int32)GetWorld()->GetNetMode()
-				);
-
-				UE_LOG(
-					LogEosGameInstanceSubsystemDRB,
-					Warning,
-					TEXT("World URL prima del ClientTravel: %s"),
-					*GetWorld()->URL.ToString()
-				);
-
-				UE_LOG(
-					LogEosGameInstanceSubsystemDRB,
-					Warning,
-					TEXT("ClientTravel URL = %s"),
-					*ConnectString
-				);
-
-				UE_LOG(
-					LogEosGameInstanceSubsystemDRB,
-					Log,
-					TEXT("ClientTravel verso EOS P2P...")
-				);
-
-				PlayerController->ClientTravel(
-					ConnectString,
-					TRAVEL_Absolute
-					//TRAVEL_Relative
-				);
+				PlayerController->ClientTravel(ConnectString, TRAVEL_Absolute);
 
 				// ATTENZIONE:
 				// Questo significa che la richiesta di travel è stata
 				// avviata, NON che la connessione è già riuscita.
 				OnEpicLobbyJoinComplete.Broadcast(true);
-
-
-				/*
-				// UE 5.7 + Online Services OSSv2:
-			// il ResolvedConnectString può essere "[EOS:PUID]"
-			// ma FURL necessita anche del Map.
-			// Per il nostro Hub usiamo il package path completo.
-			const FString HubMapPath = TEXT("/Game/FirstPerson/Lvl_FirstPerson");
-
-			const FString ClientTravelURL =
-				FString::Printf(
-					TEXT("%s%s"),
-					*ConnectString,
-					*HubMapPath
-				);
-
-			UE_LOG(
-				LogEosGameInstanceSubsystemDRB,
-				Warning,
-				TEXT("ClientTravel URL finale: [%s]"),
-				*ClientTravelURL
-			);
-
-			PlayerController->ClientTravel(
-				ClientTravelURL,
-				TRAVEL_Absolute
-			);
-
-			UE_LOG(
-				LogEosGameInstanceSubsystemDRB,
-				Log,
-				TEXT("ClientTravel verso EOS P2P avviato.")
-			);
-
-			OnEpicLobbyJoinComplete.Broadcast(true);
-				*/
 			}
 		);
 }
@@ -1605,66 +1068,6 @@ void UEosGameInstanceSubsystemDRB::LeaveEpicLobby(APlayerController* PlayerContr
             });
 }
 
-
-
-void UEosGameInstanceSubsystemDRB::ProvaOverlayLogin(APlayerController* PlayerController, bool bAutoLogin)
-{
-	using namespace UE::Online;
-
-	IOnlineServicesPtr OnlineServices = GetServices();
-
-	if (!OnlineServices.IsValid())
-	{
-		return;
-	}
-
-	IExternalUIPtr ExternalUI = OnlineServices->GetExternalUIInterface();
-
-	if (!ExternalUI.IsValid())
-	{
-		UE_LOG(LogTemp, Error, TEXT("ExternalUI non disponibile"));
-		return;
-	}
-
-	FPlatformUserId PlatformUserId = PlayerController->GetLocalPlayer()->GetPlatformUserId();
-	FExternalUIShowLoginUI::Params Params;
-	Params.PlatformUserId = PlatformUserId;
-
-	/*ExternalUI->ShowLoginUI(MoveTemp(Params))
-		.OnComplete(
-			[](const TOnlineResult<FExternalUIShowLoginUI>& Result)
-			{
-				FinalizeSuccessfulLogin(PlatformUserId);
-				UE_LOG(
-					LogTemp,
-					Log,
-					TEXT("ShowLoginUI result: %s"),
-					*Result.GetErrorValue().GetLogString()
-				);
-			}
-		);*/
-	
-	OnlineServicesInfoInternal->ExternalUIInterface->ShowLoginUI(MoveTemp(Params))
-			.OnComplete([this, PlatformUserId](const TOnlineResult<FExternalUIShowLoginUI>& Result)
-			{
-				if (Result.IsOk())
-				{
-					UE_LOG(
-						LogEosGameInstanceSubsystemDRB,
-						Log,
-						TEXT("ShowLoginUI aperta correttamente. Attendo OnLoginStatusChanged.")
-					);
-					// L'Account Portal ha avuto successo
-					FinalizeSuccessfulLogin(PlatformUserId);
-				}
-				else
-				{
-					UE_LOG(LogEosGameInstanceSubsystemDRB, Error, TEXT("ShowLoginUI fallita: %s"), *Result.GetErrorValue().GetLogString()); //Errore Login UI:
-					OnEpicLoginComplete.Broadcast(false);
-				}
-			});
-}
-
 void UEosGameInstanceSubsystemDRB::FinalizeSuccessfulLogin(FPlatformUserId PlatformUserId)
 {
 	using namespace UE::Online;
@@ -1682,62 +1085,6 @@ void UEosGameInstanceSubsystemDRB::FinalizeSuccessfulLogin(FPlatformUserId Platf
 					HandleExternalUIStatusChanged(EventParams);
 				});
 	}
-	/*
-	if (OnlineServicesInfoInternal->LobbiesInterface.IsValid())
-	{
-		// 1. Ascolto: Cambiamenti generali della Lobby (avvio partita o cambio "Pronto")
-		OnlineServicesInfoInternal->LobbyUpdateHandle = OnlineServicesInfoInternal->LobbiesInterface->OnLobbyAttributesChanged().Add(
-			[this](const UE::Online::FLobbyAttributesChanged& EventParams)
-			{
-				// OSSv2 ci dice solo che la LobbyId indicata è cambiata.
-				// Notifichiamo la UI. Nel Blueprint potrai controllare la Cache se necessario, 
-				// o usare questo trigger per sbloccare il tasto di caricamento livello.
-				UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Lobby %s aggiornata."), *UE::Online::ToLogString(EventParams.LobbyId));
-				OnEpicLobbyMatchStarted.Broadcast(true);
-			});
-
-		// 2. Ascolto: Cambio Host (Promozione manuale o Host precedente disconnesso)
-		OnlineServicesInfoInternal->LobbyLeaderChangeHandle = OnlineServicesInfoInternal->LobbiesInterface->OnLobbyLeaderChanged().Add(
-			[this](const FLobbyLeaderChanged& EventParams)
-			{
-				FString NewLeaderIdStr = ToLogString(EventParams.Leader->AccountId); //ToLogString(EventParams.AccountId); 
-				UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Nuovo leader: %s"), *NewLeaderIdStr);
-				
-				OnEpicLobbyLeaderChanged.Broadcast(NewLeaderIdStr);
-			});
-			
-		OnlineServicesInfoInternal->LobbyMemberUpdateHandle = OnlineServicesInfoInternal->LobbiesInterface->OnLobbyMemberAttributesChanged().Add(
-			[this](const UE::Online::FLobbyMemberAttributesChanged& EventParams)
-			{
-				FString MemberIdStr = UE::Online::ToLogString(EventParams.AccountId);
-				
-				// Dato che l'evento non fornisce il valore booleano esatto, 
-				// passiamo "true" come trigger generico. Nel Blueprint della UI, quando ricevi
-				// questo evento per questo MemberIdStr, aggiorna la grafica del giocatore.
-				OnEpicLobbyMemberReadyChanged.Broadcast(MemberIdStr, true);
-			});
-			
-		// 3. Ascolto: Uscita o Espulsione Giocatore
-		OnlineServicesInfoInternal->LobbiesInterface->OnLobbyMemberLeft().Add(
-			[this](const FLobbyMemberLeft& EventParams)
-			{
-				CachedActiveLobby = EventParams.Lobby;
-				if (EventParams.Reason == ELobbyMemberLeaveReason::Kicked)
-				{
-					FString LeftMemberStr = ToLogString(EventParams.Member->AccountId);//ToLogString(EventParams.AccountId);
-					UE_LOG(LogEosGameInstanceSubsystemDRB, Warning, TEXT("Giocatore espulso: %s"), *LeftMemberStr);
-					
-					// Avvisa il client interessato che è stato espulso per tornare al menu
-					OnEpicLobbyKicked.Broadcast(true); 
-				}
-				else 
-				{
-					// Se un utente è semplicemente uscito, aggiorna la UI rimuovendolo
-					OnEpicLobbyMemberLeft.Broadcast(ToLogString(EventParams.Member->AccountId));
-				}
-			});
-	}
-	*/
 
 	// Aggancio Inviti Lobby
 	if (OnlineServicesInfoInternal->LobbiesInterface.IsValid())
@@ -1770,237 +1117,6 @@ void UEosGameInstanceSubsystemDRB::FinalizeSuccessfulLogin(FPlatformUserId Platf
 
 	UE_LOG(LogEosGameInstanceSubsystemDRB, Log, TEXT("Autenticazione finalizzata con successo. OnlineUser registrato e servizi disponibili."));
 	OnEpicLoginComplete.Broadcast(true);
-}
-
-
-
-void UEosGameInstanceSubsystemDRB::ProvaLoginWithEpic2(
-	APlayerController* PlayerController,
-	bool bRememberMe)
-{
-	using namespace UE::Online;
-
-	if (!PlayerController)
-	{
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Error,
-			TEXT("LoginWithEpic: PlayerController nullo.")
-		);
-		return;
-	}
-
-	ULocalPlayer* LocalPlayer =
-		PlayerController->GetLocalPlayer();
-
-	if (!LocalPlayer)
-	{
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Error,
-			TEXT("LoginWithEpic: LocalPlayer nullo.")
-		);
-		return;
-	}
-
-	if (!OnlineServicesInfoInternal)
-	{
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Error,
-			TEXT("LoginWithEpic: OnlineServicesInfoInternal nullo.")
-		);
-		return;
-	}
-
-	if (!OnlineServicesInfoInternal->AuthInterface.IsValid())
-	{
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Error,
-			TEXT("LoginWithEpic: AuthInterface non disponibile.")
-		);
-		return;
-	}
-
-	const FPlatformUserId PlatformUserId =
-		LocalPlayer->GetPlatformUserId();
-
-	UWorld* World =
-		PlayerController->GetWorld();
-
-	if (!World)
-	{
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Error,
-			TEXT("LoginWithEpic: World nullo.")
-		);
-		return;
-	}
-
-	// ============================================================
-	// PIE
-	// ============================================================
-
-#if WITH_EDITOR
-
-	if (World->WorldType == EWorldType::PIE)
-	{
-		FAuthLogin::Params LoginParams;
-
-		LoginParams.PlatformUserId =
-			PlatformUserId;
-
-		LoginParams.CredentialsType =
-			LoginCredentialsType::Developer;
-
-		LoginParams.CredentialsId =
-			TEXT("localhost:8081");
-
-		LoginParams.CredentialsToken.Set<FString>(
-			TEXT("Piergi_F")
-		);
-
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Log,
-			TEXT("EOS Login: PIE -> Developer Auth Tool")
-		);
-
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Log,
-			TEXT("EOS Login: localhost:8081 / Piergi_F")
-		);
-
-		OnlineServicesInfoInternal->AuthInterface
-			->Login(MoveTemp(LoginParams))
-			.OnComplete(
-				this,
-				&ThisClass::HandleLoginComplete,
-				PlatformUserId
-			);
-
-		return;
-	}
-
-#endif
-
-	// ============================================================
-	// GAME / STANDALONE
-	// ============================================================
-
-	UE_LOG(
-		LogEosGameInstanceSubsystemDRB,
-		Log,
-		TEXT("EOS Login: Standalone/Game")
-	);
-
-	if (bRememberMe)
-	{
-		// --------------------------------------------------------
-		// PRIMO TENTATIVO:
-		// PersistentAuth
-		// --------------------------------------------------------
-
-		FAuthLogin::Params LoginParams;
-
-		LoginParams.PlatformUserId =
-			PlatformUserId;
-
-		LoginParams.CredentialsType =
-			LoginCredentialsType::PersistentAuth;
-
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Log,
-			TEXT("EOS Login: tentativo PersistentAuth (Remember Me)")
-		);
-		
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Log,
-			TEXT("ExternalUI valid = %s"),
-			OnlineServicesInfoInternal->ExternalUIInterface.IsValid()
-				? TEXT("TRUE")
-				: TEXT("FALSE")
-		);
-	
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Log,
-			TEXT("Auth valid = %s"),
-			OnlineServicesInfoInternal->AuthInterface.IsValid()
-				? TEXT("TRUE")
-				: TEXT("FALSE")
-		);
-	
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Log,
-			TEXT("WorldType = %d"),
-			static_cast<int32>(
-				PlayerController->GetWorld()->WorldType
-			)
-		);
-		
-		const bool bAlreadyLoggedIn =
-		OnlineServicesInfoInternal->AuthInterface->IsLoggedIn(
-			PlatformUserId
-		);
-
-		UE_LOG(
-			LogEosGameInstanceSubsystemDRB,
-			Log,
-			TEXT("EOS IsLoggedIn before login = %s"),
-			bAlreadyLoggedIn
-				? TEXT("TRUE")
-				: TEXT("FALSE")
-		);
-
-		OnlineServicesInfoInternal->AuthInterface
-			->Login(MoveTemp(LoginParams))
-			.OnComplete(
-				[this, PlatformUserId](
-					const TOnlineResult<FAuthLogin>& Result)
-				{
-					if (Result.IsOk())
-					{
-						UE_LOG(
-							LogEosGameInstanceSubsystemDRB,
-							Log,
-							TEXT("PersistentAuth riuscito.")
-						);
-
-						FinalizeSuccessfulLogin(
-							PlatformUserId);
-
-						return;
-					}
-
-					UE_LOG(
-						LogEosGameInstanceSubsystemDRB,
-						Warning,
-						TEXT("PersistentAuth non disponibile: %s"),
-						*Result.GetErrorValue().GetLogString()
-					);
-
-					// Nessuna credenziale persistente valida:
-					// passiamo al login interattivo.
-					ShowEpicLoginUI(PlatformUserId);
-				}
-			);
-
-		return;
-	}
-
-	// ------------------------------------------------------------
-	// Remember Me DISATTIVO:
-	// login interattivo immediato
-	// ------------------------------------------------------------
-
-	ShowEpicLoginUI(PlatformUserId);
 }
 
 
